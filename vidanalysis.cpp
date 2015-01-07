@@ -546,10 +546,11 @@ int main(int argc, const char** argv)
 {
 	//TODO: filename arguments "~/..." does not work. Have to specify "/home/etienne/..."
 		
+	const int newwidth = 320;
 	SystemState state = initializeSystemState();	// initialize system state (paused, compute_bg_model, etc.)
 	Windows windows = initializeWindows();			// initialize window names and positions
-	//namedWindow(windows.main, WINDOW_AUTOSIZE);
-	namedWindow(windows.main, WINDOW_NORMAL|WINDOW_KEEPRATIO);
+	namedWindow(windows.main, WINDOW_AUTOSIZE);
+	//namedWindow(windows.main, WINDOW_NORMAL|WINDOW_KEEPRATIO);
     namedWindow(windows.fgmask, WINDOW_NORMAL|WINDOW_KEEPRATIO);
     namedWindow(windows.fgimg, WINDOW_NORMAL|WINDOW_KEEPRATIO);
     namedWindow(windows.bgmodel, WINDOW_NORMAL|WINDOW_KEEPRATIO);
@@ -597,7 +598,7 @@ int main(int argc, const char** argv)
 	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome
 	if (img0.empty())
 		cout << "Unable to read from source!" << endl;
-	resize(img0, img, Size(640, 640*img0.rows/img0.cols), INTER_LINEAR);
+	resize(img0, img, Size(newwidth, newwidth*img0.rows/img0.cols), INTER_LINEAR);
 
 	// defailt ROIrect is entire image:
 	ROIrect.x = 0;
@@ -634,7 +635,7 @@ int main(int argc, const char** argv)
 			if (img0.empty())
 				displayOverlay(windows.main,"Unable to get next frame/end of video",1500);
 			
-			resize(img0, img, Size(640, 640*img0.rows/img0.cols), INTER_LINEAR);	// why do I want to resize this? computational efficiency?
+			resize(img0, img, Size(newwidth, newwidth*img0.rows/img0.cols), INTER_LINEAR);	// why do I want to resize this? computational efficiency?
 	
 	        if (fgimg.empty())
 				fgimg.create(img.size(), img.type());
@@ -690,7 +691,7 @@ int main(int argc, const char** argv)
         //img0.copyTo(tmp);
         // update video displays:
         //TODO: why are my coordinates messed up? The y-coords...
-		//updateMainDisplay(windows.main, img);
+		updateMainDisplay(windows.main, img);
    		//updateDisplay(windows.main, tmp);
 	    updateDisplay(windows.fgmask, fgmask);
 		updateDisplay(windows.fgimg, fgimg);
