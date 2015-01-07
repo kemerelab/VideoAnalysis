@@ -1,0 +1,8 @@
+compiling instructions
+
+mkdir build
+cd build
+cmake .. && make
+
+./vidanalysis -fn=./BehaviorVideo_09052014_173527.mp4 -s
+
