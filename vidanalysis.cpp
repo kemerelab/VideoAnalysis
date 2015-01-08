@@ -4,7 +4,7 @@
 #include "opencv2/imgproc.hpp"
 #include "opencv2/video/background_segm.hpp"
 #include "opencv2/videoio.hpp"
-#include <opencv2/tracking/tracker.hpp>
+#include <opencv2/tracking/tracker.hpp>		// from opencv-contrib tracking api
 #include "opencv2/highgui.hpp"
 //C++ includes
 #include <stdio.h>
@@ -64,7 +64,7 @@ const char* keys =
 	"{m methodBG |mog2     | method for background subtraction (knn or mog2) }"
 	"{s smooth   |         | smooth the BG mask }"
 	"{fn file_name|../data/tree.avi | video file }"
-	"{t methodTracker |MIL | method for tracking (MIL, BOOSTING, MEDIANFLOW, TLD,...)}"
+	"{t methodTracker |BOOSTING | method for tracking (MIL, BOOSTING, MEDIANFLOW, TLD,...)}"
 };
 
 struct timeStruct {
@@ -147,7 +147,45 @@ void onMouseClick(int event, int x, int y, int flags, void* param )
 	ROImask(ROIrect) = 1;
 
 	// display image in main window:
-	updateMainDisplay(mp->window_title, mp->img);	// this call to updateMainDisplay() gives CORRECT coordinates, if used on its own
+	updateMainDisplay(mp->window_title, mp->img);	// this call to updateMainDisplay() gives CORRECT coordinates, if used on its own, even with WINDOW_NORMAL
+}
+
+static void onMouse( int event, int x, int y, int, void* )
+{
+// TODO: understand why the method below allows for right-left BBoxes...? Seems like it should work only for display, and not to define BBox properly... CONFIRMED!! ONLY WORKS FOR DISPLAY!
+  if( !selectObject )
+  {
+    switch ( event )
+    {
+      case EVENT_LBUTTONDOWN:
+        //set origin of the bounding box
+        startSelection = true;
+        boundingBox.x = x;
+        boundingBox.y = y;
+        cout << "boundingBox.x = " << x << endl;
+        cout << "boundingBox.y = " << y << endl;
+        break;
+      case EVENT_LBUTTONUP:
+      	//TODO: shouldn't we set the x and y origin again? (if different from BBox.origin)?
+        //sei width and height of the bounding box
+        boundingBox.width = std::abs( x - boundingBox.x );
+        boundingBox.height = std::abs( y - boundingBox.y );
+        paused = false;
+        selectObject = true;
+        break;
+      case EVENT_MOUSEMOVE:
+
+        if( startSelection && !selectObject )
+        {
+          //draw the bounding box
+          Mat currentFrame;
+          image.copyTo( currentFrame );
+          rectangle( currentFrame, Point( boundingBox.x, boundingBox.y ), Point( x, y ), Scalar( 255, 170, 0 ), 2, 1 );
+          imshow( "Tracking API", currentFrame );
+        }
+        break;
+    }
+  }
 }
 
 int handleKeys(string window_title, SystemState& state, int timeout)
@@ -566,6 +604,10 @@ int main(int argc, const char** argv)
 	
     Mat img0, img, fgmask, fgimg, mmask, mimg, roimat;
     
+	Rect2d trk_boundingBox;
+	bool trk_selectObject = false;
+	bool trk_startSelection = false;
+
     help();
 
     CommandLineParser parser(argc, argv, keys);
@@ -574,8 +616,17 @@ int main(int argc, const char** argv)
     bool smoothMask = parser.has("smooth");
     string file = parser.get<string>("file_name");
     printf("file: %s\n",file.c_str());
-    string method = parser.get<string>("method");
-    
+    string methodBG = parser.get<string>("methodBG");
+    String methodTracker = parser.get<string>("methodTracker");
+
+	cout << "methodBG = " << methodBG << endl;    
+	cout << "methodTracker = " << methodTracker << endl;
+	
+	if (methodTracker.empty()){
+		cout << "No tracking algorithm specified! Assume BOOSTING" << endl;
+		methodTracker = "BOOSTING";
+	}
+	
     if (useCamera)
         cap.open(0);	// open default connected camera}
     else
@@ -585,14 +636,22 @@ int main(int argc, const char** argv)
 		maxframes = cap.get(CAP_PROP_FRAME_COUNT);	// determine number of frames in video file
 		cout << "Total number of frames: " << maxframes << endl;
 	}
-
-    parser.printMessage();
+	
+	parser.printMessage();
 
     if( !cap.isOpened() )
     {
         printf("can not open camera or video file\n");
         return -1;
     }
+    
+    // instantiates the specific Tracker
+	Ptr<Tracker> tracker = Tracker::create(methodTracker);
+	if (tracker==NULL)
+	{
+		cout << "***Error in the instantiation of the tracker...***\n";
+		return -1;
+	}
 
 	/*
 	double fps = cap.get(5); //get the frames per seconds of the video
@@ -624,10 +683,12 @@ int main(int argc, const char** argv)
     
 	setMouseCallback(windows.main, onMouseClick, (void*)(&mp) );
 
-    Ptr<BackgroundSubtractor> bg_model = method == "knn" ?
+    Ptr<BackgroundSubtractor> bg_model = methodBG == "knn" ?
             createBackgroundSubtractorKNN().dynamicCast<BackgroundSubtractor>() :
             createBackgroundSubtractorMOG2().dynamicCast<BackgroundSubtractor>();
 
+	bool trk_initialized = false;
+	
     for(;;)
     {
 		Mat bgimg;
@@ -657,7 +718,8 @@ int main(int argc, const char** argv)
 			bg_model->apply(roimat, fgmask, state.update_bg_model ? -1 : 0);
 			if (smoothMask)
 				{
-				    GaussianBlur(fgmask, fgmask, Size(21, 21), 3.5, 3.5);
+				    //GaussianBlur(fgmask, fgmask, Size(21, 21), 3.5, 3.5);
+				    GaussianBlur(fgmask, fgmask, Size(9, 9), 3.5, 3.5);	//TODO: allow for smoothing size to be dynamically changed
 				    threshold(fgmask, fgmask, 10, 255, THRESH_BINARY);
 				}
 			
@@ -681,6 +743,28 @@ int main(int argc, const char** argv)
 			// compute background model image: TODO: toggle or remove this; unneccesary computation
 			if (state.compute_bg_image == true)
 				bg_model->getBackgroundImage(bgimg);
+				
+			// ### perform tracking on filtered foreground image ###
+			// TODO: the tracking should be applied whether or not the state is PAUSED---makes sense for some algorithms (detection-based) and not for others
+			if( !trk_initialized && trk_selectObject )
+			{
+				//initializes the tracker TODO: trk_boundingBox should be shifted relative to frame
+				if( !tracker->init( mimg, trk_boundingBox ) )
+				{
+					cout << "***Could not initialize tracker...***\n";
+					return -1;
+				}
+				trk_initialized = true;
+			}
+			else if( trk_initialized )
+			{
+				//updates the tracker
+				if( tracker->update( mimg, trk_boundingBox ) )
+				{
+					rectangle( fgimg, trk_boundingBox, Scalar( 255, 0, 0 ), 2, 1 ); //TODO: not fgimg...
+				}
+			}			
+			// #####################################################
         }
         else if (k==-2) // update morphological filtering while paused
         {
