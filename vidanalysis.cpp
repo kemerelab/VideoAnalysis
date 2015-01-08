@@ -90,17 +90,19 @@ timeStruct getTime()
 
 void updateDisplay(string window_title, const Mat& in, Rect2d rect, cv::Size size)
 {
+	int lineWidth = 1;
 	Mat tmp = Mat::zeros(size, in.type());	// create empty matrix with size of the video frame
 	// copy content into ROI:
 	in.copyTo(tmp(rect));
 	// draw ROI bbox:
-	rectangle(tmp, ROIrect, Scalar(255,170,0),2);
+	rectangle(tmp, ROIrect, Scalar(255,170,0),lineWidth);
 	// display image in window:	
 	imshow(window_title, tmp);
 }
 
 void updateMainDisplay(string window_title, const Mat& in)
 {
+	int lineWidth = 1;
 	double alpha = 0.3;
 	int beta = 0;
 	Mat tmp = Mat::zeros(in.size(), in.type());
@@ -110,7 +112,7 @@ void updateMainDisplay(string window_title, const Mat& in)
 	// apply bounding box to main image:
 	in.copyTo(tmp,ROImask);  
 	// draw ROI bbox:
-	rectangle(tmp, ROIrect, Scalar(255,170,0),2);
+	rectangle(tmp, ROIrect, Scalar(255,170,0),lineWidth);
 	// display image in main window:	
 	imshow(window_title, tmp);
 }
@@ -479,9 +481,10 @@ RotatedRect computeFgBBox(Mat& fgmask)
 
 void drawFgBBox(Mat& fgimg, RotatedRect bbox)
 {
+	int lineWidth=2;
 	Point2f vertices[4];
 	bbox.points(vertices);
-	int lineWidth=2;
+	
 	for(int i = 0; i < 4; ++i)
 		line(fgimg, vertices[i], vertices[(i + 1) % 4], Scalar(255, 170, 0), lineWidth); 
 }	
@@ -545,7 +548,6 @@ void positionWindows(Windows windows)
 	moveWindow(windows.fgmask, xstart, ystart);
 }
 
-
 int main(int argc, const char** argv)
 {
 	//TODO: filename arguments "~/..." does not work. Have to specify "/home/etienne/..."
@@ -560,7 +562,7 @@ int main(int argc, const char** argv)
     namedWindow(windows.bgmodel, WINDOW_AUTOSIZE);
     namedWindow(windows.mmask, WINDOW_AUTOSIZE);
     namedWindow(windows.mimg, WINDOW_AUTOSIZE);
-	positionWindows(windows);
+	positionWindows(windows);	// does not work with WINDOW_AUTOSIZE
 	
     Mat img0, img, fgmask, fgimg, mmask, mimg, roimat;
     
@@ -697,9 +699,45 @@ int main(int argc, const char** argv)
         }
         else if (k==-1)
         	break;
-        		
-        //Mat tmp = Mat::zeros(img0.size(), img0.type());
-        //img0.copyTo(tmp);
+        else if (k==0)
+        {
+	        // obtain ROI slice from img:
+			roimat = img(ROIrect);
+        	// if the ROI size changed while the system was PAUSED, then we need to update the foreground images:	
+		    if ((fgimg.size()!=roimat.size())&&(!roimat.empty())){
+				//cout << "ROI size changed while PAUSED" << endl;
+		    	fgimg.create(roimat.size(), roimat.type());
+		    	//update the background model (learning, if active, otherwise simply compute new background image)
+				bg_model->apply(roimat, fgmask, state.update_bg_model ? -1 : 0);
+				if (smoothMask)
+					{
+						GaussianBlur(fgmask, fgmask, Size(21, 21), 3.5, 3.5);
+						threshold(fgmask, fgmask, 10, 255, THRESH_BINARY);
+					}
+			
+				// ###################### MORPHOLOGICAL FILTERING #####################################			
+				// apply morphological filtering:
+				applyMorphology(fgmask, mmask, state.morph_size);
+
+				// compute foreground image BEFORE morphological filtering TODO:remove this
+				fgimg = Scalar::all(0);
+				roimat.copyTo(fgimg, fgmask);	//TODO: remove fgimg, and only use mimg...
+
+				// compute foreground image after morphological filtering:
+				mimg = Scalar::all(0);
+				roimat.copyTo(mimg, mmask);
+				// ####################################################################################
+		
+				// compute and draw BBOx on foreground image: TODO: toggle or remove this; unneccesary computation
+				RotatedRect fgbox = computeFgBBox(mmask);
+				drawFgBBox(mimg, fgbox);
+
+				// compute background model image: TODO: toggle or remove this; unneccesary computation
+				if (state.compute_bg_image == true)
+					bg_model->getBackgroundImage(bgimg);			
+		    }
+		}
+		        		
         // update video displays:
         //TODO: why are my coordinates messed up? The y-coords...
 		updateMainDisplay(windows.main, img);
