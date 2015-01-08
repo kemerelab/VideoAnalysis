@@ -126,8 +126,8 @@ void onMouseClick(int event, int x, int y, int flags, void* param )
 	
 	// update roi rectangle:
 	//TODO: make it robust: check for limits, allow for right-to-left specification
-	ROIrect.width = std::abs(x - ROIrect.x);
-	ROIrect.height = std::abs(y - ROIrect.y);
+	ROIrect.width = std::max(std::abs(x - ROIrect.x),(double)1);
+	ROIrect.height = std::max(std::abs(y - ROIrect.y),(double)1);
 	
 	/*
 	cout << "ROIrect.x = " << ROIrect.x << endl;
@@ -551,14 +551,14 @@ int main(int argc, const char** argv)
 	Windows windows = initializeWindows();			// initialize window names and positions
 	namedWindow(windows.main, WINDOW_AUTOSIZE);
 	//namedWindow(windows.main, WINDOW_NORMAL|WINDOW_KEEPRATIO);
-    namedWindow(windows.fgmask, WINDOW_NORMAL|WINDOW_KEEPRATIO);
-    namedWindow(windows.fgimg, WINDOW_NORMAL|WINDOW_KEEPRATIO);
-    namedWindow(windows.bgmodel, WINDOW_NORMAL|WINDOW_KEEPRATIO);
-    namedWindow(windows.mmask, WINDOW_NORMAL|WINDOW_KEEPRATIO);
-    namedWindow(windows.mimg, WINDOW_NORMAL|WINDOW_KEEPRATIO);
+    namedWindow(windows.fgmask, WINDOW_AUTOSIZE|WINDOW_KEEPRATIO);
+    namedWindow(windows.fgimg, WINDOW_AUTOSIZE|WINDOW_KEEPRATIO);
+    namedWindow(windows.bgmodel, WINDOW_AUTOSIZE);
+    namedWindow(windows.mmask, WINDOW_AUTOSIZE);
+    namedWindow(windows.mimg, WINDOW_AUTOSIZE);
 	positionWindows(windows);
 	
-    Mat img0, img, fgmask, fgimg, mmask, mimg;
+    Mat img0, img, fgmask, fgimg, mmask, mimg, roimat;
     
     help();
 
@@ -588,10 +588,12 @@ int main(int argc, const char** argv)
         return -1;
     }
 
+	/*
 	double fps = cap.get(5); //get the frames per seconds of the video
 	cout << "Frame per seconds : " << fps << endl;
 	cout << "Source width: " << cap.get(CAP_PROP_FRAME_WIDTH) << endl;
 	cout << "Source height: " << cap.get(CAP_PROP_FRAME_HEIGHT) << endl;
+	*/
 	
 	// define default ROI mask (entire image)
 	cap >> img0;	// get first frame from camera or video file
@@ -636,12 +638,16 @@ int main(int argc, const char** argv)
 				displayOverlay(windows.main,"Unable to get next frame/end of video",1500);
 			
 			resize(img0, img, Size(newwidth, newwidth*img0.rows/img0.cols), INTER_LINEAR);	// why do I want to resize this? computational efficiency?
+			
+			// obtain ROI slice from img:
+			roimat = img(ROIrect);
 	
-	        if (fgimg.empty())
-				fgimg.create(img.size(), img.type());
+	        if ((fgimg.empty()||fgimg.size()!=roimat.size())&&(!roimat.empty())){
+	        	//cout << "size changed!" << endl;
+				fgimg.create(roimat.size(), roimat.type());}
 
 		    //update the background model (learning, if active, otherwise simply compute new background image)
-			bg_model->apply(img, fgmask, state.update_bg_model ? -1 : 0);
+			bg_model->apply(roimat, fgmask, state.update_bg_model ? -1 : 0);
 			if (smoothMask)
 				{
 				    GaussianBlur(fgmask, fgmask, Size(21, 21), 3.5, 3.5);
@@ -654,11 +660,11 @@ int main(int argc, const char** argv)
 
 			// compute foreground image BEFORE morphological filtering TODO:remove this
 			fgimg = Scalar::all(0);
-			img.copyTo(fgimg, fgmask);	//TODO: remove fgimg, and only use mimg...
+			roimat.copyTo(fgimg, fgmask);	//TODO: remove fgimg, and only use mimg...
 
 			// compute foreground image after morphological filtering:
 			mimg = Scalar::all(0);
-			img.copyTo(mimg, mmask);
+			roimat.copyTo(mimg, mmask);
 			// ####################################################################################
 		
 			// compute and draw BBOx on foreground image: TODO: toggle or remove this; unneccesary computation
@@ -677,7 +683,7 @@ int main(int argc, const char** argv)
 
 			// compute foreground image after morphological filtering:
 			mimg = Scalar::all(0);
-			img.copyTo(mimg, mmask);
+			roimat.copyTo(mimg, mmask);
 			// ####################################################################################
 			
 			// compute and draw BBOx on foreground image: TODO: toggle or remove this; unneccesary computation
