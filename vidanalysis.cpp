@@ -88,12 +88,16 @@ timeStruct getTime()
 	return myTime;
 }
 
-void updateDisplay(string window_title, const Mat& in)
+void updateDisplay(string window_title, const Mat& in, Rect2d rect, cv::Size size)
 {
-	//display image in window:	
-	imshow(window_title, in);
+	Mat tmp = Mat::zeros(size, in.type());	// create empty matrix with size of the video frame
+	// copy content into ROI:
+	in.copyTo(tmp(rect));
+	// draw ROI bbox:
+	rectangle(tmp, ROIrect, Scalar(255,170,0),2);
+	// display image in window:	
+	imshow(window_title, tmp);
 }
-
 
 void updateMainDisplay(string window_title, const Mat& in)
 {
@@ -105,9 +109,9 @@ void updateMainDisplay(string window_title, const Mat& in)
 	in.convertTo(tmp, -1, alpha, beta); 
 	// apply bounding box to main image:
 	in.copyTo(tmp,ROImask);  
-	//draw ROI bbox:
+	// draw ROI bbox:
 	rectangle(tmp, ROIrect, Scalar(255,170,0),2);
-	//display image in main window:	
+	// display image in main window:	
 	imshow(window_title, tmp);
 }
 
@@ -549,10 +553,10 @@ int main(int argc, const char** argv)
 	const int newwidth = 320;
 	SystemState state = initializeSystemState();	// initialize system state (paused, compute_bg_model, etc.)
 	Windows windows = initializeWindows();			// initialize window names and positions
-	namedWindow(windows.main, WINDOW_AUTOSIZE);
 	//namedWindow(windows.main, WINDOW_NORMAL|WINDOW_KEEPRATIO);
-    namedWindow(windows.fgmask, WINDOW_AUTOSIZE|WINDOW_KEEPRATIO);
-    namedWindow(windows.fgimg, WINDOW_AUTOSIZE|WINDOW_KEEPRATIO);
+	namedWindow(windows.main, WINDOW_AUTOSIZE);
+    namedWindow(windows.fgmask, WINDOW_AUTOSIZE);
+    namedWindow(windows.fgimg, WINDOW_AUTOSIZE);
     namedWindow(windows.bgmodel, WINDOW_AUTOSIZE);
     namedWindow(windows.mmask, WINDOW_AUTOSIZE);
     namedWindow(windows.mimg, WINDOW_AUTOSIZE);
@@ -642,6 +646,7 @@ int main(int argc, const char** argv)
 			// obtain ROI slice from img:
 			roimat = img(ROIrect);
 	
+			// check if ROI size has changed, and re-initialize fgimg, if necessary:
 	        if ((fgimg.empty()||fgimg.size()!=roimat.size())&&(!roimat.empty())){
 	        	//cout << "size changed!" << endl;
 				fgimg.create(roimat.size(), roimat.type());}
@@ -698,14 +703,14 @@ int main(int argc, const char** argv)
         // update video displays:
         //TODO: why are my coordinates messed up? The y-coords...
 		updateMainDisplay(windows.main, img);
-   		//updateDisplay(windows.main, tmp);
-	    updateDisplay(windows.fgmask, fgmask);
-		updateDisplay(windows.fgimg, fgimg);
-		updateDisplay(windows.mmask, mmask);
-		updateDisplay(windows.mimg, mimg);
+   		//updateDisplay(windows.main, tmp, ROIrect, img.size());
+	    updateDisplay(windows.fgmask, fgmask, ROIrect, img.size());
+		updateDisplay(windows.fgimg, fgimg, ROIrect, img.size());
+		updateDisplay(windows.mmask, mmask, ROIrect, img.size());
+		updateDisplay(windows.mimg, mimg, ROIrect, img.size());
 		//TODO: consolidate background update and background update display for better performance...
 		if(!bgimg.empty() && state.compute_bg_image==true)
-	    	updateDisplay(windows.bgmodel, bgimg );
+	    	updateDisplay(windows.bgmodel, bgimg, ROIrect, img.size());
 	}
     return 0;
 }
