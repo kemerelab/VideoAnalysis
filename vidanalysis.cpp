@@ -27,8 +27,7 @@ static vector<int> framelist;	// list of bookmarked frames // TODO: load and sav
 
 static VideoCapture cap;
 static Mat ROImask;			// TODO: move this into SystemState or elsewhere local in the main program
-
-static Rect2d ROIrect;		// TODO: move this into SystemState or elsewhere local in the main program
+static Rect2d ROIrect;
 
 //TODO: consider changing structs to classes, for cleaner and more powerful C++ implenentations
 struct SystemState
@@ -37,6 +36,7 @@ struct SystemState
 	bool compute_bg_image;
 	bool paused;
 	int morph_size;
+	//Rect2d ROIrect;
 };
 
 struct Windows
@@ -48,6 +48,7 @@ struct MouseParams
 {
     Mat img;
     string window_title;
+    Point topleft,topright,bottomleft,bottomright,origin;
 };
 
 static void help()
@@ -119,21 +120,90 @@ void updateMainDisplay(string window_title, const Mat& in)
 
 void onMouseClick(int event, int x, int y, int flags, void* param )
 {
+	MouseParams* mp = (MouseParams*)param;
+	
+	/*
+	Point topleft = mp->topleft;
+	Point topright = mp->topright;
+	Point bottomleft = mp->bottomleft;
+	Point bottomright= mp->bottomright;
+*/
+	
 	if (event == EVENT_LBUTTONDOWN && flags == EVENT_FLAG_CTRLKEY + EVENT_FLAG_LBUTTON) 
 	{
 		cout << "BBox selection started!" << endl;
-		ROIrect.x = x;
-		ROIrect.y = y;
+		mp->origin.x = x;
+		mp->origin.y = y;
+		mp->topleft.x = x;
+		mp->topleft.y = y;
+		mp->topright.x = x+1;
+		mp->topright.y = y;
+		mp->bottomleft.x = x;
+		mp->bottomleft.y = y+1;
+		mp->bottomright.x = x+1;
+		mp->bottomright.y = y+1;
 	}
 	else if (event != EVENT_MOUSEMOVE || flags != EVENT_FLAG_CTRLKEY + EVENT_FLAG_LBUTTON) return;
 
-	MouseParams* mp = (MouseParams*)param;
     Mat in = mp->img;
 	
 	// update roi rectangle:
 	//TODO: make it robust: check for limits, allow for right-to-left specification
-	ROIrect.width = std::max(std::abs(x - ROIrect.x),(double)1);
-	ROIrect.height = std::max(std::abs(y - ROIrect.y),(double)1);
+
+	if ((x<=mp->origin.x)&&(y<=mp->origin.y))
+	{
+		mp->topleft.x = x;
+		mp->topleft.y = y;
+		mp->topright.y = y;
+		mp->bottomleft.x = x;
+	}
+	else if (x<=mp->origin.x)
+	{
+		mp->bottomleft.x = x;
+		mp->bottomleft.y = y;
+		mp->bottomright.y = y;
+		mp->topleft.x = x;
+	}
+	else if ((x>=mp->origin.x)&&(y<=mp->origin.y))
+	{
+		mp->topright.x = x;
+		mp->topright.y = y;
+		mp->topleft.y = y;
+		mp->bottomright.x = x;
+	}
+	else
+	{
+		mp->bottomright.x = x;
+		mp->bottomright.y = y;
+		mp->topright.x = x;
+		mp->bottomleft.y = y;
+	}
+	
+	// constrain ROI rectangle:
+	mp->topleft.x = max(mp->topleft.x,1);
+	mp->topleft.x = min(mp->topleft.x,mp->img.cols);
+	mp->topleft.y = max(mp->topleft.y,1);
+	mp->topleft.y = min(mp->topleft.y,mp->img.rows);
+
+	mp->topright.x = max(mp->topright.x,1);	
+	mp->topright.x = min(mp->topright.x,mp->img.cols);
+	mp->topright.y = max(mp->topright.y,1);
+	mp->topright.y = min(mp->topright.y,mp->img.rows);
+	
+	mp->bottomright.x = max(mp->bottomright.x,1);	
+	mp->bottomright.x = min(mp->bottomright.x,mp->img.cols);
+	mp->bottomright.y = max(mp->bottomright.y,1);
+	mp->bottomright.y = min(mp->bottomright.y,mp->img.rows);
+	
+	mp->bottomleft.x = max(mp->bottomleft.x,1);	
+	mp->bottomleft.x = min(mp->bottomleft.x,mp->img.cols);
+	mp->bottomleft.y = max(mp->bottomleft.y,1);
+	mp->bottomleft.y = min(mp->bottomleft.y,mp->img.rows);
+	
+	ROIrect.x = mp->topleft.x;
+	ROIrect.y = mp->topleft.y;
+	ROIrect.width = std::max((mp->topright.x - mp->topleft.x),1);
+	ROIrect.height = std::max((mp->bottomleft.y - mp->topleft.y),1);
 	
 	/*
 	cout << "ROIrect.x = " << ROIrect.x << endl;
@@ -150,6 +220,7 @@ void onMouseClick(int event, int x, int y, int flags, void* param )
 	updateMainDisplay(mp->window_title, mp->img);	// this call to updateMainDisplay() gives CORRECT coordinates, if used on its own, even with WINDOW_NORMAL
 }
 
+/*
 static void onMouse( int event, int x, int y, int, void* )
 {
 // TODO: understand why the method below allows for right-left BBoxes...? Seems like it should work only for display, and not to define BBox properly... CONFIRMED!! ONLY WORKS FOR DISPLAY!
@@ -187,6 +258,7 @@ static void onMouse( int event, int x, int y, int, void* )
     }
   }
 }
+*/
 
 int handleKeys(string window_title, SystemState& state, int timeout)
 {
@@ -534,6 +606,7 @@ SystemState initializeSystemState()
 	state.update_bg_model = true;
 	state.paused = false;	//TODO: fix bug: if initialized with paused=true, then program crashes...
 	state.morph_size = 12;
+	//state.ROIrect;
 	//TODO: incorporate more variables and/or objects into system state:
 	//useCamera
 	//smoothMask
