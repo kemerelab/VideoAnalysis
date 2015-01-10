@@ -24,6 +24,7 @@ using namespace cv;
 
 static double currframe, maxframes, maxkeyframes, keyframe;	// TODO: move this into SystemState or elsewhere local in the main program
 static vector<int> framelist;	// list of bookmarked frames // TODO: load and save bookmarks from and to file
+static vector<Point> traj;
 
 static VideoCapture cap;
 static Mat ROImask;			// TODO: move this into SystemState or elsewhere local in the main program
@@ -35,6 +36,8 @@ struct SystemState
 	bool update_bg_model;
 	bool compute_bg_image;
 	bool paused;
+	bool tracking;
+	bool tracker_initialized;
 	int morph_size;
 	//Rect2d ROIrect;
 };
@@ -553,6 +556,26 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 			displayOverlay(window_title,"compute_bg_image = OFF",msgtimeout);
 		return 1;
 	}
+	if (k=='t')	// toggle tracking
+	{
+		if (state.tracker_initialized)
+			if (state.tracking==true)
+			{
+				state.tracking = false;
+				displayOverlay(window_title,"Tracking enabled",msgtimeout);
+			}
+			else
+			{
+				state.tracking = false;
+				displayOverlay(window_title,"Tracking disabled",msgtimeout);
+			}
+		else
+			displayOverlay(window_title,"Tracker not initialized",msgtimeout);
+		if (!state.paused)
+			return 1;
+		else
+			return 0;
+	}
 	if (k==63) // display keyboard shortcuts "?"
 	{
 		sprintf(overlaytext, "'p' pause or resume playback\n '[' go to previous keyframe\n']'go to next keyframe\n'?' display keyboard shortcuts\n','\n\'.'\nSHIFT + ','\nSHIFT + '.'\n'i'\nSPACE\n<ESC> quits the program\nHOME\nEND");
@@ -604,8 +627,10 @@ SystemState initializeSystemState()
 	SystemState state;
 	state.compute_bg_image = true;
 	state.update_bg_model = true;
-	state.paused = false;	//TODO: fix bug: if initialized with paused=true, then program crashes...
+	state.paused = false;
 	state.morph_size = 12;
+	state.tracking = false;
+	state.tracker_initialized = false;
 	//state.ROIrect;
 	//TODO: incorporate more variables and/or objects into system state:
 	//useCamera
