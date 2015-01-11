@@ -29,6 +29,7 @@ static vector<Point> traj;
 static VideoCapture cap;
 static Mat ROImask;			// TODO: move this into SystemState or elsewhere local in the main program
 static Rect2d ROIrect;
+static Rect2d trk_boundingBox; // TODO: move into SystemState or elsewhere
 
 //TODO: consider changing structs to classes, for cleaner and more powerful C++ implenentations
 struct SystemState
@@ -39,6 +40,8 @@ struct SystemState
 	bool tracking;
 	bool tracker_initialized;
 	int morph_size;
+	bool tracker_init_in_progress;
+	bool tracker_init_started;
 	//Rect2d ROIrect;
 };
 
@@ -52,6 +55,10 @@ struct MouseParams
     Mat img;
     string window_title;
     Point topleft,topright,bottomleft,bottomright,origin;
+    bool* tracker_init_in_progress;
+	bool* tracker_initialized;
+	bool* tracker_init_started;
+	bool tracker_region_ready;
 };
 
 static void help()
@@ -121,10 +128,48 @@ void updateMainDisplay(string window_title, const Mat& in)
 	imshow(window_title, tmp);
 }
 
-void onMouseClick(int event, int x, int y, int flags, void* param )
+void onMouse(int event, int x, int y, int flags, void* param )
 {
 	MouseParams* mp = (MouseParams*)param;
+	Mat in = mp->img;
 	
+	if (*(mp->tracker_init_in_progress)==true)
+	{
+		//TODO:do tracker_init code here... INIT on mouse_up
+		switch ( event )
+		{
+			case EVENT_LBUTTONDOWN:
+				*(mp->tracker_init_started)=true;
+				//set origin of the bounding box
+				trk_boundingBox.x = x;
+				trk_boundingBox.y = y;
+				cout << "boundingBox.x = " << x << endl;
+				cout << "boundingBox.y = " << y << endl;
+				break;
+			case EVENT_LBUTTONUP:
+				//TODO: shouldn't we set the x and y origin again? (if different from BBox.origin)?
+				//set width and height of the bounding box
+				trk_boundingBox.width = std::abs( x - trk_boundingBox.x );
+				trk_boundingBox.height = std::abs( y - trk_boundingBox.y );
+				*(mp->tracker_init_in_progress) = false;
+				mp->tracker_region_ready = true;
+				*(mp->tracker_initialized) = false;
+				break;
+			case EVENT_MOUSEMOVE:
+				if (*(mp->tracker_init_started)==true)
+				{
+					//draw the bounding box
+				  	Mat currentFrame;
+					in.copyTo( currentFrame );
+			  		rectangle( currentFrame, Point( trk_boundingBox.x, trk_boundingBox.y ), Point( x, y ), Scalar( 255, 170, 0 ), 2, 1 );
+			  		imshow(mp->window_title, currentFrame );
+			  	}  
+		  		break;
+			}
+			
+		//cout << "mp->tracker_init_in_progress==true" << endl;
+		return;
+	}
 	/*
 	Point topleft = mp->topleft;
 	Point topright = mp->topright;
@@ -148,7 +193,7 @@ void onMouseClick(int event, int x, int y, int flags, void* param )
 	}
 	else if (event != EVENT_MOUSEMOVE || flags != EVENT_FLAG_CTRLKEY + EVENT_FLAG_LBUTTON) return;
 
-    Mat in = mp->img;
+    
 	
 	// update roi rectangle:
 	//TODO: make it robust: check for limits, allow for right-to-left specification
@@ -223,46 +268,6 @@ void onMouseClick(int event, int x, int y, int flags, void* param )
 	updateMainDisplay(mp->window_title, mp->img);	// this call to updateMainDisplay() gives CORRECT coordinates, if used on its own, even with WINDOW_NORMAL
 }
 
-/*
-static void onMouse( int event, int x, int y, int, void* )
-{
-// TODO: understand why the method below allows for right-left BBoxes...? Seems like it should work only for display, and not to define BBox properly... CONFIRMED!! ONLY WORKS FOR DISPLAY!
-  if( !selectObject )
-  {
-    switch ( event )
-    {
-      case EVENT_LBUTTONDOWN:
-        //set origin of the bounding box
-        startSelection = true;
-        boundingBox.x = x;
-        boundingBox.y = y;
-        cout << "boundingBox.x = " << x << endl;
-        cout << "boundingBox.y = " << y << endl;
-        break;
-      case EVENT_LBUTTONUP:
-      	//TODO: shouldn't we set the x and y origin again? (if different from BBox.origin)?
-        //sei width and height of the bounding box
-        boundingBox.width = std::abs( x - boundingBox.x );
-        boundingBox.height = std::abs( y - boundingBox.y );
-        paused = false;
-        selectObject = true;
-        break;
-      case EVENT_MOUSEMOVE:
-
-        if( startSelection && !selectObject )
-        {
-          //draw the bounding box
-          Mat currentFrame;
-          image.copyTo( currentFrame );
-          rectangle( currentFrame, Point( boundingBox.x, boundingBox.y ), Point( x, y ), Scalar( 255, 170, 0 ), 2, 1 );
-          imshow( "Tracking API", currentFrame );
-        }
-        break;
-    }
-  }
-}
-*/
-
 int handleKeys(string window_title, SystemState& state, int timeout)
 {
 	//TODO: add toggle for persistent frame and/or time display
@@ -271,9 +276,29 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	int msgtimeout = 1500;	// time in milliseconds that message is displayed
 	char overlaytext[255];
 	char k = (char)waitKey(timeout);
-
-	if (k==27) // ESC key exits the program
+	
+	if ((state.tracker_init_in_progress==true)&&(k!=27))
+		return 0;
+	else if ((k==27)&&(state.tracker_init_in_progress==false)) // ESC key exits the program
 		return -1;
+	else if ((k==27)&&(state.tracker_init_in_progress==true))
+		{
+			state.tracker_init_in_progress = false;
+			displayOverlay(window_title,"",1);
+			//TODO: what else should happen here? overwrite display messages?
+			if (!state.paused)
+				return 1;
+			else
+				return 0;
+		}
+	if (k=='g')
+	{
+		state.tracker_init_started = false;
+		state.tracker_init_in_progress = true;
+		printf("Initializing tracker...\n");
+		displayOverlay(window_title,"Initializing tracker: define region, or ESC to cancel",0);
+		return 0;
+	}
 	if (k==' ') // space bar toggles background model learning
 	{
 		state.update_bg_model = !state.update_bg_model;
@@ -562,12 +587,12 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 			if (state.tracking==true)
 			{
 				state.tracking = false;
-				displayOverlay(window_title,"Tracking enabled",msgtimeout);
+				displayOverlay(window_title,"Tracking disabled",msgtimeout);
 			}
 			else
 			{
-				state.tracking = false;
-				displayOverlay(window_title,"Tracking disabled",msgtimeout);
+				state.tracking = true;
+				displayOverlay(window_title,"Tracking enabled",msgtimeout);
 			}
 		else
 			displayOverlay(window_title,"Tracker not initialized",msgtimeout);
@@ -629,8 +654,10 @@ SystemState initializeSystemState()
 	state.update_bg_model = true;
 	state.paused = false;
 	state.morph_size = 12;
-	state.tracking = false;
+	state.tracking = false;						// tracker enabled (TRUE) or disabled (FALSE)
 	state.tracker_initialized = false;
+	state.tracker_init_in_progress = false;
+	state.tracker_init_started = false;
 	//state.ROIrect;
 	//TODO: incorporate more variables and/or objects into system state:
 	//useCamera
@@ -701,10 +728,7 @@ int main(int argc, const char** argv)
 	positionWindows(windows);	// does not work with WINDOW_AUTOSIZE
 	
     Mat img0, img, fgmask, fgimg, mmask, mimg, roimat;
-    
-	Rect2d trk_boundingBox;
-	bool trk_selectObject = false;
-	bool trk_startSelection = false;
+	//Rect2d trk_boundingBox; //TODO: fix, use, or remove this... move into state???
 
     help();
 
@@ -760,7 +784,7 @@ int main(int argc, const char** argv)
 	
 	// define default ROI mask (entire image)
 	cap >> img0;	// get first frame from camera or video file
-	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome
+	//cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome	//TODO: uncomment this!!! Only commented to test tracking...
 	if (img0.empty())
 		cout << "Unable to read from source!" << endl;
 	resize(img0, img, Size(newwidth, newwidth*img0.rows/img0.cols), INTER_LINEAR);
@@ -778,14 +802,18 @@ int main(int argc, const char** argv)
     MouseParams mp;
     mp.img = img;
     mp.window_title = windows.main;
+	mp.tracker_init_in_progress = &state.tracker_init_in_progress;
+	mp.tracker_initialized = &state.tracker_initialized;
+	mp.tracker_init_started = &state.tracker_init_started;
+	mp.tracker_region_ready = false;
+	
+	//cout << "*(mp.tracker_init_in_progress) = " << *(mp.tracker_init_in_progress) << endl;
     
-	setMouseCallback(windows.main, onMouseClick, (void*)(&mp) );
+	setMouseCallback(windows.main, onMouse, (void*)(&mp) );
 
     Ptr<BackgroundSubtractor> bg_model = methodBG == "knn" ?
             createBackgroundSubtractorKNN().dynamicCast<BackgroundSubtractor>() :
             createBackgroundSubtractorMOG2().dynamicCast<BackgroundSubtractor>();
-
-	bool trk_initialized = false;
 	
     for(;;)
     {
@@ -797,7 +825,7 @@ int main(int argc, const char** argv)
 			// get next frame from file:
         	cap >> img0;	// get next frame from camera or video file
         	//TODO: fix methods to work in color or monochrome mode
-        	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome
+			//cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome //TODO: BUG: tracking seems to work only with color videos...
 			//TODO: fix end of video termination issue
 			if (img0.empty())
 				displayOverlay(windows.main,"Unable to get next frame/end of video",1500);
@@ -844,22 +872,25 @@ int main(int argc, const char** argv)
 				
 			// ### perform tracking on filtered foreground image ###
 			// TODO: the tracking should be applied whether or not the state is PAUSED---makes sense for some algorithms (detection-based) and not for others
-			if( !trk_initialized && trk_selectObject )
+			if( !state.tracker_initialized && mp.tracker_region_ready )
 			{
+				cout << "***Attempting to intialize tracker...***\n";
 				//initializes the tracker TODO: trk_boundingBox should be shifted relative to frame
-				if( !tracker->init( mimg, trk_boundingBox ) )
+				if( !tracker->init(img, trk_boundingBox ) )
 				{
 					cout << "***Could not initialize tracker...***\n";
 					return -1;
 				}
-				trk_initialized = true;
+				state.tracker_initialized = true;
+				mp.tracker_region_ready = false;
+				cout << "***Tracker initialized successfully...***\n";
 			}
-			else if( trk_initialized )
+			else if (state.tracker_initialized && state.tracking)
 			{
 				//updates the tracker
-				if( tracker->update( mimg, trk_boundingBox ) )
+				if( tracker->update(img, trk_boundingBox ) )
 				{
-					rectangle( fgimg, trk_boundingBox, Scalar( 255, 0, 0 ), 2, 1 ); //TODO: not fgimg...
+					rectangle( img, trk_boundingBox, Scalar( 255, 170, 0 ), 2, 1 ); //TODO: not fgimg...
 				}
 			}			
 			// #####################################################
@@ -919,19 +950,20 @@ int main(int argc, const char** argv)
 					bg_model->getBackgroundImage(bgimg);			
 		    }
 		}
-		        		
-        // update video displays:
-        //TODO: why are my coordinates messed up? The y-coords...
-		updateMainDisplay(windows.main, img);
-   		//updateDisplay(windows.main, tmp, ROIrect, img.size());
-	    updateDisplay(windows.fgmask, fgmask, ROIrect, img.size());
-		updateDisplay(windows.fgimg, fgimg, ROIrect, img.size());
-		updateDisplay(windows.mmask, mmask, ROIrect, img.size());
-		updateDisplay(windows.mimg, mimg, ROIrect, img.size());
-		//TODO: consolidate background update and background update display for better performance...
-		if(!bgimg.empty() && state.compute_bg_image==true)
-	    	updateDisplay(windows.bgmodel, bgimg, ROIrect, img.size());
-	}
+		if (!state.tracker_init_in_progress){
+		    // update video displays:
+		    //TODO: why are my coordinates messed up? The y-coords...
+			updateMainDisplay(windows.main, img);
+	   		//updateDisplay(windows.main, tmp, ROIrect, img.size());
+			updateDisplay(windows.fgmask, fgmask, ROIrect, img.size());
+			updateDisplay(windows.fgimg, fgimg, ROIrect, img.size());
+			updateDisplay(windows.mmask, mmask, ROIrect, img.size());
+			updateDisplay(windows.mimg, mimg, ROIrect, img.size());
+			//TODO: consolidate background update and background update display for better performance...
+			if(!bgimg.empty() && state.compute_bg_image==true)
+				updateDisplay(windows.bgmodel, bgimg, ROIrect, img.size());
+		}
+		}
     return 0;
 }
 
