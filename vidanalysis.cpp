@@ -784,7 +784,7 @@ int main(int argc, const char** argv)
 	
 	// define default ROI mask (entire image)
 	cap >> img0;	// get first frame from camera or video file
-	//cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome	//TODO: uncomment this!!! Only commented to test tracking...
+	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome	//TODO: uncomment this!!! Only commented to test tracking...
 	if (img0.empty())
 		cout << "Unable to read from source!" << endl;
 	resize(img0, img, Size(newwidth, newwidth*img0.rows/img0.cols), INTER_LINEAR);
@@ -825,7 +825,7 @@ int main(int argc, const char** argv)
 			// get next frame from file:
         	cap >> img0;	// get next frame from camera or video file
         	//TODO: fix methods to work in color or monochrome mode
-			//cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome //TODO: BUG: tracking seems to work only with color videos...
+			cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome //TODO: BUG: tracking seems to work only with color videos...
 			//TODO: fix end of video termination issue
 			if (img0.empty())
 				displayOverlay(windows.main,"Unable to get next frame/end of video",1500);
