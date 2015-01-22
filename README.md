@@ -16,6 +16,8 @@ The code depends on features of [OpenCV 3.0.0 beta](http://opencv.org/downloads.
 Installation instructions for OpenCV on Ubuntu 14.04
 ----------------------------------------------------
 
+### Install and configure OpenCV and its dependencies
+
 <ol>
 	<li>download latest version opencv-3.0.0-beta from http://opencv.org/downloads.html</li>
 	<li>run the following in your terminal:
@@ -35,3 +37,22 @@ sudo make install</pre></li>
 	<li>finally, configure OpenCV: <code>sudo ldconfig</code></li>
 </ol>
 
+### Install and run VideoAnalysis software
+
+<ol>
+	<li>in your terminal, navigate to where you want the VideoAnalysis software to be downloaded to.</li>
+	<li>get the latest version of VideoAnalysis by typing the following in your terminal:
+	<pre>git clone https://github.com/kemerelab/VideoAnalysis</pre>
+</li>
+	<li>make a build directory, and compile the software:
+	<pre>
+mkdir build
+cd build
+cmake .. && make
+</pre></li>
+	<li>then run thhe software:
+	<pre>./vidanalysis -fn=../data/BehaviorVideo_09052014_173527.mp4 -s</pre></li>
+</ol>
+
+
+https://github.com/kemerelab/VideoAnalysis
