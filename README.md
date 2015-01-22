@@ -50,9 +50,7 @@ mkdir build
 cd build
 cmake .. && make
 </pre></li>
-	<li>then run thhe software:
+	<li>then run the software:
 	<pre>./vidanalysis -fn=../data/BehaviorVideo_09052014_173527.mp4 -s</pre></li>
 </ol>
 
-
-https://github.com/kemerelab/VideoAnalysis
