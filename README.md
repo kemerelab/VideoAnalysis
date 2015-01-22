@@ -18,16 +18,17 @@ Installation instructions for OpenCV on Ubuntu 14.04
 
 <ol>
 	<li>download latest version opencv-3.0.0-beta from http://opencv.org/downloads.html</li>
-	<li> <pre>sudo apt-get install build-essential
+	<li>run the following in your terminal:
+	<pre>sudo apt-get install build-essential
+sudo apt-get install libopencv-dev libqt5svg5-dev qtcreator #not sure which ones are necessary...
 sudo apt-get install cmake git libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev
 sudo apt-get install python-dev python-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev libdc1394-22-dev</pre></li>
-	<li>in your terminal, make sure you are within the OpenCV directory and run the following commands:
+	<li>in your terminal, make sure you are within the OpenCV directory (presumably ~/home/Downloads/opencv-3.0.0-beta/) and run the following commands:
 	<pre>
-sudo apt-get install libopencv-dev libqt5svg5-dev qtcreator #not sure which ones are necessary...
 git clone https://github.com/Itseez/opencv_contrib.git
 mkdir build
 cd build
-cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=/usr/local -DFORCE_VTK=ON -DWITH_GDAL=ON -DWITH_XINE=ON -DWITH_CUBLAS=ON -DWITH_CUFFT=ON -DWITH_OPENGL=ON -DWITH_QT=ON -DWITH_TBB=ON -DBUILD_DOCS=ON -DBUILD_EXAMPLES=ON -DBUILD_TESTS=ON -D CUDA_ARCH_BIN="3.0" -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules .. -DBUILD_opencv_cvv=OFF</pre></li>
+cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=/usr/local -DFORCE_VTK=ON -DWITH_GDAL=ON -DWITH_XINE=ON -DWITH_CUBLAS=ON -DWITH_CUFFT=ON -DWITH_OPENGL=ON -DWITH_QT=ON -DWITH_TBB=ON -DBUILD_DOCS=ON -DBUILD_EXAMPLES=ON -DBUILD_TESTS=ON -D CUDA_ARCH_BIN="3.0" -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules .. -DBUILD_opencv_cvv=OFF</pre></li>
 	<li>then build and install:
 	<pre>make -j7 # runs 7 jobs in parallel
 sudo make install</pre></li>
