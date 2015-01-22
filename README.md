@@ -23,6 +23,7 @@ sudo apt-get install cmake git libgtk2.0-dev pkg-config libavcodec-dev libavform
 sudo apt-get install python-dev python-numpy libtbb2 libtbb-dev libjpeg-dev libpng-dev libtiff-dev libjasper-dev libdc1394-22-dev</pre></li>
 	<li>in your terminal, make sure you are within the OpenCV directory and run the following commands:
 	<pre>
+sudo apt-get install libopencv-dev libqt5svg5-dev qtcreator #not sure which ones are necessary...
 git clone https://github.com/Itseez/opencv_contrib.git
 mkdir build
 cd build
