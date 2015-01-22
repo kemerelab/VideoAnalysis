@@ -1,5 +1,8 @@
 # ignore all files in the build/ directory
 build/
 
+# ignore the video files
+data/
+
 # ignore temporary ~ files
 *~
