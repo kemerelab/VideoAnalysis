@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <vector>
+#include <iterator>
 #include <algorithm>
 #include <stdlib.h>     /* div, div_t */
 #include <string>
@@ -22,8 +23,11 @@
 using namespace std;
 using namespace cv;
 
-static double currframe, maxframes, maxkeyframes, keyframe;	// TODO: move this into SystemState or elsewhere local in the main program
-static vector<int> framelist;	// list of bookmarked frames // TODO: load and save bookmarks from and to file
+static unsigned long currframe, maxframes, maxkeyframes, keyframe;	// TODO: move this into SystemState or elsewhere local in the main program
+static vector<unsigned long> framelist;	// list of bookmarked frames // TODO: load and save bookmarks from and to file TODO: should this be double? we could have many frames...
+static vector<unsigned long> ratflist;	// list of frame number where rat/no_rat signals are pinned
+static vector<bool> ratlist;	// list of rat/no_rat pins
+static std::vector<unsigned long>::iterator prevratpin,nextratpin;
 static vector<Point> traj;
 
 static VideoCapture cap;
@@ -99,6 +103,42 @@ timeStruct getTime()
 	return myTime;
 }
 
+bool ratInFrame(int framenumber){
+
+std::cout << "entering ratInFrame()" << endl;
+/*
+  low=std::lower_bound (v.begin(), v.end(), 20); //          ^
+  up= std::upper_bound (v.begin(), v.end(), 20); //                   ^
+
+  std::cout << "lower_bound at position " << (low- v.begin()) << '\n';
+  std::cout << "upper_bound at position " << (up - v.begin()) << '\n';
+*/
+  	if (*prevratpin > framenumber){
+  		prevratpin = std::lower_bound(ratflist.begin(), ratflist.end()-1, framenumber);
+  	}
+  	else
+  	{
+  		/*std::cout << "entering else clause" << endl;
+  		std::cout << "framenumber: " << framenumber << endl;
+  		std::cout << "begin(): " << *prevratpin << endl;
+  		std::cout << "end(): " << *ratflist.end() << endl;*/
+  		prevratpin = std::lower_bound(prevratpin, ratflist.end()-1, framenumber);
+  	}
+  	//std::cout << "ratInFrame::prevratpinA: " << *prevratpin << endl;
+  	if ((*prevratpin > framenumber)&&(*prevratpin!=0)){
+  		prevratpin=prevratpin-1;
+	}
+		//prevratpin = nextratpin--;
+	//}
+
+//	std::cout << "ratInFrame::prevratpinB: " << *prevratpin << endl;
+	//std::cout << "ratInFrame::nextratpin: " << *nextratpin << endl;
+	std::cout << "leaving ratInFrame()" << endl;
+	return ratlist[prevratpin - ratflist.begin()];
+
+	//framelist.push_back(currframe-1);
+}
+
 void updateDisplay(string window_title, const Mat& in, Rect2d rect, cv::Size size)
 {
 	int lineWidth = 1;
@@ -113,7 +153,7 @@ void updateDisplay(string window_title, const Mat& in, Rect2d rect, cv::Size siz
 
 void updateMainDisplay(string window_title, const Mat& in)
 {
-	int lineWidth = 1;
+	int lineWidth = 2;
 	double alpha = 0.3;
 	int beta = 0;
 	Mat tmp = Mat::zeros(in.size(), in.type());
@@ -123,7 +163,10 @@ void updateMainDisplay(string window_title, const Mat& in)
 	// apply bounding box to main image:
 	in.copyTo(tmp,ROImask);  
 	// draw ROI bbox:
-	rectangle(tmp, ROIrect, Scalar(255,170,0),lineWidth);
+	if (!ratInFrame(cap.get(CAP_PROP_POS_FRAMES)))
+		rectangle(tmp, ROIrect, Scalar(170,0,255),lineWidth); // magenta border ==> no rat in frame
+	else
+		rectangle(tmp, ROIrect, Scalar(255,170,0),lineWidth); // cyan border ==> rat in frame
 	// display image in main window:	
 	imshow(window_title, tmp);
 }
@@ -261,7 +304,7 @@ void onMouse(int event, int x, int y, int flags, void* param )
 	*/
 
 	// update mask
-	ROImask = Mat::zeros(in.size(), in.type());
+	ROImask = Mat::zeros(in.size(), CV_8UC1);
 	ROImask(ROIrect) = 1;
 
 	// display image in main window:
@@ -317,6 +360,62 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		else
 			return 0;
 	}
+	if (k=='r') // toggle rat in frame
+	{
+		currframe = cap.get(CAP_PROP_POS_FRAMES);
+
+		cout << "rat toggled" << endl;
+		std::cout << "prevratpin: " << *prevratpin << endl;
+		//std::cout << "nextratpin: " << *nextratpin << endl;
+		std::cout << "current frame: " << currframe << endl;
+		
+		if (ratInFrame(currframe)==true){
+			if (currframe==*prevratpin){
+				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin()  << " to FALSE" << endl;
+				ratlist[prevratpin - ratflist.begin()] = false;
+			}
+			else{
+				cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
+				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),false);
+				ratflist.insert(prevratpin+1,currframe);
+			}
+		}
+		else{
+			if (currframe==*prevratpin){
+				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin() << " to TRUE" << endl;
+				ratlist[prevratpin - ratflist.begin()] = true;
+			}
+			else{
+				cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
+				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),true);
+				ratflist.insert(prevratpin+1,currframe);
+			}
+		}
+		
+		
+		
+		sprintf(overlaytext, "rat toggle");
+		displayOverlay(window_title,overlaytext, msgtimeout);
+
+		std::cout << "prevratpin: " << *prevratpin << endl;
+		//std::cout << "nextratpin: " << *nextratpin << endl;
+		std::vector<bool>::iterator itb;
+		std::cout << "ratlist contains:";
+  		for (itb=ratlist.begin(); itb<ratlist.end(); itb++)
+    		std::cout << ' ' << *itb;
+  		std::cout << '\n';
+
+		std::vector<unsigned long>::iterator it;
+  		std::cout << "ratflist contains:";
+  		for (it=ratflist.begin(); it<ratflist.end(); it++)
+    		std::cout << ' ' << *it;
+  		std::cout << '\n';
+
+		if (!state.paused)
+			return 1;
+		else
+			return -2; // update morphological fitering in paused state
+	}
 	if (k==43) // + increase morph_size
 	{
 	//TODO:updateWindow(const string& winname);
@@ -352,7 +451,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = framelist[keyframe];
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "keyframe #%g at frame #%g", keyframe+1, currframe+1);
+			sprintf(overlaytext, "keyframe #%lu at frame #%lu", keyframe+1, currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 		}
 		return 1;
@@ -372,7 +471,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 				keyframe = 0;
 			currframe = framelist[keyframe];
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "keyframe #%g at frame #%g", keyframe+1, currframe+1);
+			sprintf(overlaytext, "keyframe #%lu at frame #%lu", keyframe+1, currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 		}
 		return 1;
@@ -392,7 +491,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 				keyframe = maxkeyframes-1;
 			currframe = framelist[keyframe];
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "keyframe #%g at frame #%g", keyframe+1, currframe+1);
+			sprintf(overlaytext, "keyframe #%lu at frame #%lu", keyframe+1, currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 		}
 		return 1;
@@ -405,7 +504,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 //			currframe = currframe+1;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%g", currframe+1);
+			sprintf(overlaytext, "frame #%lu", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;	
 		}
@@ -424,7 +523,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe-2;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%g", currframe+1);
+			sprintf(overlaytext, "frame #%lu", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;
 		}
@@ -443,7 +542,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe+29;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%g", currframe+1);
+			sprintf(overlaytext, "frame #%lu", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;	
 		}
@@ -462,7 +561,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe-31;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%g", currframe+1);
+			sprintf(overlaytext, "frame #%lu", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;
 		}
@@ -481,7 +580,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe+149;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%g", currframe+1);
+			sprintf(overlaytext, "frame #%lu", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;		
 		}
@@ -500,7 +599,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe-151;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%g", currframe+1);
+			sprintf(overlaytext, "frame #%lu", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;
 		}
@@ -518,7 +617,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		maxkeyframes = ++maxkeyframes;
 		framelist.push_back(currframe-1); // add currently displayed frame
 		//std::for_each(framelist.begin(), framelist.end(), displayValue);
-		sprintf(overlaytext, "Added keyframe #%g at frame #%g", maxkeyframes, currframe);
+		sprintf(overlaytext, "Added keyframe #%lu at frame #%lu", maxkeyframes, currframe);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		if (!state.paused)
 			return 1;
@@ -529,7 +628,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	{
 		currframe = 0;
 		cap.set(CAP_PROP_POS_FRAMES,currframe);
-		sprintf(overlaytext, "start of video; frame #%g", currframe+1);
+		sprintf(overlaytext, "start of video; frame #%lu", currframe+1);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		return 1;
 	}
@@ -537,7 +636,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	{
 		currframe = maxframes-1;
 		cap.set(CAP_PROP_POS_FRAMES,currframe);
-		sprintf(overlaytext, "end of video; frame #%g", currframe+1);
+		sprintf(overlaytext, "end of video; frame #%lu", currframe+1);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		return 1;
 	}
@@ -546,11 +645,11 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		timeStruct myTime = getTime();	
 		currframe = cap.get(CAP_PROP_POS_FRAMES);
 		if (myTime.hour>0)
-			sprintf(overlaytext, "current frame #%g\n current time: %d:%d:%d.%d", currframe, myTime.hour, myTime.minute, myTime.second, myTime.millisecond);
+			sprintf(overlaytext, "current frame #%lu\n current time: %d:%d:%d.%d", currframe, myTime.hour, myTime.minute, myTime.second, myTime.millisecond);
 		else if (myTime.minute>0)
-			sprintf(overlaytext, "current frame #%g\n current time: %d:%d.%d", currframe, myTime.minute, myTime.second, myTime.millisecond);
+			sprintf(overlaytext, "current frame #%lu\n current time: %d:%d.%d", currframe, myTime.minute, myTime.second, myTime.millisecond);
 	else
-			sprintf(overlaytext, "current frame #%g\n current time: %d.%d", currframe, myTime.second, myTime.millisecond);
+			sprintf(overlaytext, "current frame #%lu\n current time: %d.%d", currframe, myTime.second, myTime.millisecond);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		if (!state.paused)
 			return 1;
@@ -716,6 +815,20 @@ int main(int argc, const char** argv)
 	//TODO: filename arguments "~/..." does not work. Have to specify "/home/etienne/..."
 		
 	const int newwidth = 320;
+
+	//ratflist.insert(ratflist.begin(),2);
+	//ratflist.insert(ratflist.begin(),1);
+	ratflist.insert(ratflist.begin(),0);
+	//ratflist.insert(ratflist.begin(),5);
+	std::cout << "main::ratflist.begin(): " << *ratflist.begin() << endl;
+	std::cout << "main::ratflist.end()-1: " << *(ratflist.end()-1) << endl;
+
+	ratlist.insert(ratlist.begin(),false);
+	//ratlist.insert(ratlist.begin(),false);
+	//ratlist.insert(ratlist.begin(),false);
+	prevratpin = ratflist.begin();
+	//nextratpin = ratflist.end();
+
 	SystemState state = initializeSystemState();	// initialize system state (paused, compute_bg_model, etc.)
 	Windows windows = initializeWindows();			// initialize window names and positions
 	//namedWindow(windows.main, WINDOW_NORMAL|WINDOW_KEEPRATIO);
@@ -767,13 +880,7 @@ int main(int argc, const char** argv)
         return -1;
     }
     
-    // instantiates the specific Tracker
-	Ptr<Tracker> tracker = Tracker::create(methodTracker);
-	if (tracker==NULL)
-	{
-		cout << "***Error in the instantiation of the tracker...***\n";
-		return -1;
-	}
+    Ptr<Tracker> tracker;
 
 	/*
 	double fps = cap.get(5); //get the frames per seconds of the video
@@ -784,7 +891,8 @@ int main(int argc, const char** argv)
 	
 	// define default ROI mask (entire image)
 	cap >> img0;	// get first frame from camera or video file
-	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome	//TODO: uncomment this!!! Only commented to test tracking...
+	//if (!img0.empty())
+	//	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome	//TODO: uncomment this!!! Only commented to test tracking...
 	if (img0.empty())
 		cout << "Unable to read from source!" << endl;
 	resize(img0, img, Size(newwidth, newwidth*img0.rows/img0.cols), INTER_LINEAR);
@@ -796,7 +904,7 @@ int main(int argc, const char** argv)
 	ROIrect.height = img.rows;
 
 	// update mask
-	ROImask = Mat::zeros(img.size(), img.type());
+	ROImask = Mat::zeros(img.size(), CV_8UC1);
 	ROImask(ROIrect) = 1;
     
     MouseParams mp;
@@ -825,7 +933,10 @@ int main(int argc, const char** argv)
 			// get next frame from file:
         	cap >> img0;	// get next frame from camera or video file
         	//TODO: fix methods to work in color or monochrome mode
-			cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome //TODO: BUG: tracking seems to work only with color videos...
+        	if (img0.empty())
+        		printf("img0 is empty!\n");
+			//if (!img0.empty())	
+			//	cvtColor(img0, img0, COLOR_BGR2GRAY);	// convert to monochrome //TODO: BUG: tracking seems to work only with color videos...
 			//TODO: fix end of video termination issue
 			if (img0.empty())
 				displayOverlay(windows.main,"Unable to get next frame/end of video",1500);
@@ -874,9 +985,20 @@ int main(int argc, const char** argv)
 			// TODO: the tracking should be applied whether or not the state is PAUSED---makes sense for some algorithms (detection-based) and not for others
 			if( !state.tracker_initialized && mp.tracker_region_ready )
 			{
+				displayOverlay(windows.main,"",1);
 				cout << "***Attempting to intialize tracker...***\n";
+				cout << img.size() << endl;
+
+				// instantiates the specific Tracker
+				tracker = Tracker::create(methodTracker);
+				if (tracker==NULL)
+				{
+					cout << "***Error in the instantiation of the tracker...***\n";
+					return -1;
+				}
+				
 				//initializes the tracker TODO: trk_boundingBox should be shifted relative to frame
-				if( !tracker->init(img, trk_boundingBox ) )
+				if( !tracker->init(img, trk_boundingBox ) ) // DOES NOT WORK ON GRAYSCALE!!! TODO: investigate
 				{
 					cout << "***Could not initialize tracker...***\n";
 					return -1;
@@ -884,13 +1006,21 @@ int main(int argc, const char** argv)
 				state.tracker_initialized = true;
 				mp.tracker_region_ready = false;
 				cout << "***Tracker initialized successfully...***\n";
+
 			}
 			else if (state.tracker_initialized && state.tracking)
 			{
+				// check if rat is expected in frame:
+				//if 
 				//updates the tracker
 				if( tracker->update(img, trk_boundingBox ) )
 				{
-					rectangle( img, trk_boundingBox, Scalar( 255, 170, 0 ), 2, 1 ); //TODO: not fgimg...
+					rectangle(img, trk_boundingBox, Scalar( 0, 170, 255 ), 2, 1 ); // orange for auto
+					rectangle(img, trk_boundingBox, Scalar( 170, 255, 0 ), 2, 1 ); // green for manual
+					rectangle(img, trk_boundingBox, Scalar( 170, 0, 255 ), 2, 1 ); // magenta for no_rat
+					//cout << "trk_boundingBox: " << trk_boundingBox << endl;
+					//currframe = cap.get(CAP_PROP_POS_FRAMES);
+					cout << "(x,y) = (" << trk_boundingBox.x + (float)trk_boundingBox.width/2 << "," <<  trk_boundingBox.y + (float)trk_boundingBox.height/2 << ")" << endl;
 				}
 			}			
 			// #####################################################
