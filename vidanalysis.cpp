@@ -23,11 +23,71 @@
 using namespace std;
 using namespace cv;
 
-static unsigned long currframe, maxframes, maxkeyframes, keyframe;	// TODO: move this into SystemState or elsewhere local in the main program
-static vector<unsigned long> framelist;	// list of bookmarked frames // TODO: load and save bookmarks from and to file TODO: should this be double? we could have many frames...
-static vector<unsigned long> ratflist;	// list of frame number where rat/no_rat signals are pinned
+// numframes
+// framenum 	x 	y 	type (m_anual,n_orat,a_uto)
+// bookmarklist
+// ratlist
+// ratflist
+// ROImask
+// BGmodel
+// system state: 
+/*
+class MyData //my video analysis project data//
+{
+public:
+    MyData()
+    {
+    	cout << "MyData::MyData()" << endl;
+    	//bookmarks = NULL;
+    	ratflist.insert(ratflist.begin(),0);
+		ratlist.insert(ratlist.begin(),false);
+    }
+    //explicit MyData(int) : A(97), X(CV_PI), id("mydata1234") // explicit to avoid implicit conversion
+    //{}
+    void write(FileStorage& fs) const                        //Write serialization for this class
+    {
+        fs << "bookmarks" << "[" << bookmarks << "]"; // << "ratflist" << ratflist << "ratlist" << ratlist << "}";
+    }
+    void read(const FileNode& node)                          //Read serialization for this class
+    {
+        bookmarks = (unsigned long)node["bookmarks"];
+        X = (unsigned long)node["ratflist"];
+        ratlist = (bool)node["ratlist"];
+    }
+public:   // Data Members
+    vector<unsigned long> bookmarks;	// list of bookmarked frames // TODO: load and save bookmarks from and to file TODO: should this be double? we could have many frames...
+	vector<unsigned long> ratflist;	// list of frame number where rat/no_rat signals are pinned
+	vector<bool> ratlist;
+};
+
+//These write and read functions must be defined for the serialization in FileStorage to work
+static void write(FileStorage& fs, const std::string&, const MyData& x)
+{
+    x.write(fs);
+}
+static void read(const FileNode& node, MyData& x, const MyData& default_value = MyData()){
+    if(node.empty())
+        x = default_value;
+    else
+        x.read(node);
+}
+
+// This function will print our custom class to the console
+static ostream& operator<<(ostream& out, const MyData& m)
+{
+    out << "{ id = " << m.id << ", ";
+    out << "X = " << m.X << ", ";
+    out << "A = " << m.A << "}";
+    return out;
+}
+
+*/
+
+static int32_t currframe, maxframes, maxkeyframes, keyframe;	// TODO: move this into SystemState or elsewhere local in the main program
+static vector<int32_t> bookmarks;	// list of bookmarked frames // TODO: load and save bookmarks from and to file TODO: should this be double? we could have many frames...
+static vector<int32_t> ratflist;	// list of frame number where rat/no_rat signals are pinned
 static vector<bool> ratlist;	// list of rat/no_rat pins
-static std::vector<unsigned long>::iterator prevratpin,nextratpin;
+static std::vector<int32_t>::iterator prevratpin,nextratpin;
 static vector<Point> traj;
 
 static VideoCapture cap;
@@ -136,7 +196,7 @@ std::cout << "entering ratInFrame()" << endl;
 	std::cout << "leaving ratInFrame()" << endl;
 	return ratlist[prevratpin - ratflist.begin()];
 
-	//framelist.push_back(currframe-1);
+	//bookmarks.push_back(currframe-1);
 }
 
 void updateDisplay(string window_title, const Mat& in, Rect2d rect, cv::Size size)
@@ -342,6 +402,40 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		displayOverlay(window_title,"Initializing tracker: define region, or ESC to cancel",0);
 		return 0;
 	}
+	if (k=='s'){
+		FileStorage fs("bookmarks.yml", FileStorage::WRITE);
+		write(fs,"bookmarks",bookmarks);
+		//write(fs,"ratlist",ratlist);
+		write(fs,"ratflist",ratflist);
+		fs.release();
+
+		/*
+		vector<int> keypoints;
+		keypoints.push_back(1);
+		keypoints.push_back(2);
+
+		FileStorage fs("keypoint1.yml", FileStorage::WRITE);
+		write(fs , "keypoint", keypoints);
+		fs.release();
+
+		vector<int> newKeypoints;
+		FileStorage fs2("keypoint1.yml", FileStorage::READ);
+		FileNode kptFileNode = fs2["keypoint"];
+		read(kptFileNode, newKeypoints);
+		fs2.release();
+		*/
+		
+		/*
+		vector<int> keypoints;
+		keypoints.push_back(3);
+		keypoints.push_back(5);
+		keypoints.push_back(2);
+		FileStorage fs("keypoint1.yml", FileStorage::WRITE);
+		write( fs , "keypoint", keypoints );
+		fs.release();
+		*/
+	}
+
 	if (k==' ') // space bar toggles background model learning
 	{
 		state.update_bg_model = !state.update_bg_model;
@@ -405,7 +499,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
     		std::cout << ' ' << *itb;
   		std::cout << '\n';
 
-		std::vector<unsigned long>::iterator it;
+		std::vector<int32_t>::iterator it;
   		std::cout << "ratflist contains:";
   		for (it=ratflist.begin(); it<ratflist.end(); it++)
     		std::cout << ' ' << *it;
@@ -449,9 +543,9 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		}
 		else
 		{
-			currframe = framelist[keyframe];
+			currframe = bookmarks[keyframe];
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "keyframe #%lu at frame #%lu", keyframe+1, currframe+1);
+			sprintf(overlaytext, "keyframe #%d at frame #%d", keyframe+1, currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 		}
 		return 1;
@@ -469,9 +563,9 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 				keyframe = ++keyframe;
 			else
 				keyframe = 0;
-			currframe = framelist[keyframe];
+			currframe = bookmarks[keyframe];
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "keyframe #%lu at frame #%lu", keyframe+1, currframe+1);
+			sprintf(overlaytext, "keyframe #%d at frame #%d", keyframe+1, currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 		}
 		return 1;
@@ -489,9 +583,9 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 				keyframe = --keyframe;
 			else
 				keyframe = maxkeyframes-1;
-			currframe = framelist[keyframe];
+			currframe = bookmarks[keyframe];
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "keyframe #%lu at frame #%lu", keyframe+1, currframe+1);
+			sprintf(overlaytext, "keyframe #%d at frame #%d", keyframe+1, currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 		}
 		return 1;
@@ -504,7 +598,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 //			currframe = currframe+1;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%lu", currframe+1);
+			sprintf(overlaytext, "frame #%d", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;	
 		}
@@ -523,7 +617,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe-2;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%lu", currframe+1);
+			sprintf(overlaytext, "frame #%d", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;
 		}
@@ -542,7 +636,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe+29;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%lu", currframe+1);
+			sprintf(overlaytext, "frame #%d", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;	
 		}
@@ -561,7 +655,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe-31;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%lu", currframe+1);
+			sprintf(overlaytext, "frame #%d", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;
 		}
@@ -580,7 +674,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe+149;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%lu", currframe+1);
+			sprintf(overlaytext, "frame #%d", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;		
 		}
@@ -599,7 +693,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		{
 			currframe = currframe-151;
 			cap.set(CAP_PROP_POS_FRAMES,currframe);
-			sprintf(overlaytext, "frame #%lu", currframe+1);
+			sprintf(overlaytext, "frame #%d", currframe+1);
 			displayOverlay(window_title,overlaytext,msgtimeout);
 			return 1;
 		}
@@ -615,9 +709,9 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	{
 		currframe = cap.get(CAP_PROP_POS_FRAMES);
 		maxkeyframes = ++maxkeyframes;
-		framelist.push_back(currframe-1); // add currently displayed frame
-		//std::for_each(framelist.begin(), framelist.end(), displayValue);
-		sprintf(overlaytext, "Added keyframe #%lu at frame #%lu", maxkeyframes, currframe);
+		bookmarks.push_back(currframe-1); // add currently displayed frame
+		//std::for_each(bookmarks.begin(), bookmarks.end(), displayValue);
+		sprintf(overlaytext, "Added keyframe #%d at frame #%d", maxkeyframes, currframe);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		if (!state.paused)
 			return 1;
@@ -628,7 +722,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	{
 		currframe = 0;
 		cap.set(CAP_PROP_POS_FRAMES,currframe);
-		sprintf(overlaytext, "start of video; frame #%lu", currframe+1);
+		sprintf(overlaytext, "start of video; frame #%d", currframe+1);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		return 1;
 	}
@@ -636,7 +730,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	{
 		currframe = maxframes-1;
 		cap.set(CAP_PROP_POS_FRAMES,currframe);
-		sprintf(overlaytext, "end of video; frame #%lu", currframe+1);
+		sprintf(overlaytext, "end of video; frame #%d", currframe+1);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		return 1;
 	}
@@ -645,11 +739,11 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		timeStruct myTime = getTime();	
 		currframe = cap.get(CAP_PROP_POS_FRAMES);
 		if (myTime.hour>0)
-			sprintf(overlaytext, "current frame #%lu\n current time: %d:%d:%d.%d", currframe, myTime.hour, myTime.minute, myTime.second, myTime.millisecond);
+			sprintf(overlaytext, "current frame #%d\n current time: %d:%d:%d.%d", currframe, myTime.hour, myTime.minute, myTime.second, myTime.millisecond);
 		else if (myTime.minute>0)
-			sprintf(overlaytext, "current frame #%lu\n current time: %d:%d.%d", currframe, myTime.minute, myTime.second, myTime.millisecond);
+			sprintf(overlaytext, "current frame #%d\n current time: %d:%d.%d", currframe, myTime.minute, myTime.second, myTime.millisecond);
 	else
-			sprintf(overlaytext, "current frame #%lu\n current time: %d.%d", currframe, myTime.second, myTime.millisecond);
+			sprintf(overlaytext, "current frame #%d\n current time: %d.%d", currframe, myTime.second, myTime.millisecond);
 		displayOverlay(window_title,overlaytext,msgtimeout);
 		if (!state.paused)
 			return 1;
