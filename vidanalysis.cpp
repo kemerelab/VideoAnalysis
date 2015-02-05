@@ -1,3 +1,4 @@
+
 //#include "opencv2/opencv.hpp"	// add all openCV functionality
 #include "opencv2/core.hpp"
 #include <opencv2/core/utility.hpp>
@@ -14,6 +15,14 @@
 #include <algorithm>
 #include <stdlib.h>     /* div, div_t */
 #include <string>
+
+//#include <fcntl.h>   // F_OK
+//#include <linux/fs.h> // file ACCESS
+//#include <stdint.h>
+#include <unistd.h> // for access()
+
+#define HEADER_SIZE 256
+#define MAX_FNAME_LENGTH 1000
 
 //TODO: for multicamera implementation, and better performance control, use grab & retrieve methods instead of cap >> img0...
 //TODO: add toggle for smoothing
@@ -86,7 +95,7 @@ static ostream& operator<<(ostream& out, const MyData& m)
 static int32_t currframe, maxframes, maxkeyframes, keyframe;	// TODO: move this into SystemState or elsewhere local in the main program
 static vector<int32_t> bookmarks;	// list of bookmarked frames // TODO: load and save bookmarks from and to file TODO: should this be double? we could have many frames...
 static vector<int32_t> ratflist;	// list of frame number where rat/no_rat signals are pinned
-static vector<bool> ratlist;	// list of rat/no_rat pins
+static vector<int32_t> ratlist;	// list of rat/no_rat pins 	// TODO: only need bool, but bool is not supported by YAML writer...
 static std::vector<int32_t>::iterator prevratpin,nextratpin;
 static vector<Point> traj;
 
@@ -106,6 +115,7 @@ struct SystemState
 	int morph_size;
 	bool tracker_init_in_progress;
 	bool tracker_init_started;
+	string filename;
 	//Rect2d ROIrect;
 };
 
@@ -165,7 +175,7 @@ timeStruct getTime()
 
 bool ratInFrame(int framenumber){
 
-std::cout << "entering ratInFrame()" << endl;
+//std::cout << "entering ratInFrame()" << endl;
 /*
   low=std::lower_bound (v.begin(), v.end(), 20); //          ^
   up= std::upper_bound (v.begin(), v.end(), 20); //                   ^
@@ -193,8 +203,8 @@ std::cout << "entering ratInFrame()" << endl;
 
 //	std::cout << "ratInFrame::prevratpinB: " << *prevratpin << endl;
 	//std::cout << "ratInFrame::nextratpin: " << *nextratpin << endl;
-	std::cout << "leaving ratInFrame()" << endl;
-	return ratlist[prevratpin - ratflist.begin()];
+//	std::cout << "leaving ratInFrame()" << endl;
+	return (bool)ratlist[prevratpin - ratflist.begin()];
 
 	//bookmarks.push_back(currframe-1);
 }
@@ -371,6 +381,16 @@ void onMouse(int event, int x, int y, int flags, void* param )
 	updateMainDisplay(mp->window_title, mp->img);	// this call to updateMainDisplay() gives CORRECT coordinates, if used on its own, even with WINDOW_NORMAL
 }
 
+void replaceExt(string& s, const string& newExt) {
+
+   string::size_type i = s.rfind('.', s.length());
+
+   if (i != string::npos) {
+      s.replace(i+1, newExt.length(), newExt);
+   }
+}
+
+
 int handleKeys(string window_title, SystemState& state, int timeout)
 {
 	//TODO: add toggle for persistent frame and/or time display
@@ -403,9 +423,45 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		return 0;
 	}
 	if (k=='s'){
+
+		int count = 0;
+		char output_fname[MAX_FNAME_LENGTH];
+		string new_output_fname;
+		new_output_fname = state.filename;
+		replaceExt(new_output_fname, "traj");
+		cout << "output traj file:" << new_output_fname << endl;
+		strncpy(output_fname, new_output_fname.c_str(), MAX_FNAME_LENGTH);
+
+		FILE *output_fp;
+
+		//TODO: give option to overwrite .traj file
+		if ( access(output_fname, F_OK ) == 0 ) {
+		     fprintf(stderr, "Output file already exists.\n");
+		     displayOverlay(window_title,"Output .traj file already exists. Overwriting...",msgtimeout);
+		     //return -2;
+		}
+
+		output_fp = fopen(output_fname, "w");
+		if (output_fp == NULL) {
+		    fprintf(stderr, "Error opening output file.\n");
+		    displayOverlay(window_title,"Error opening output .traj file.",msgtimeout);
+		    return -2;
+		}
+
+		count = fprintf(output_fp, "VideoAnalysis trajectory file v0.01\n");
+		count += fprintf(output_fp, "%d Frames written in format: [int32_t frame number][int32_t pixel_x][int32_t pixel_y][char type]\n", maxframes);
+
+		for (int i = 0; i < (HEADER_SIZE - count - 1); i++)
+		      fprintf(output_fp, " ");
+		fprintf(output_fp, "\n");
+
+
+		fclose(output_fp);
+
+
 		FileStorage fs("bookmarks.yml", FileStorage::WRITE);
 		write(fs,"bookmarks",bookmarks);
-		//write(fs,"ratlist",ratlist);
+		write(fs,"ratlist",ratlist);
 		write(fs,"ratflist",ratflist);
 		fs.release();
 
@@ -465,23 +521,23 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		
 		if (ratInFrame(currframe)==true){
 			if (currframe==*prevratpin){
-				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin()  << " to FALSE" << endl;
-				ratlist[prevratpin - ratflist.begin()] = false;
+				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin()  << " to 0 (FALSE)" << endl;
+				ratlist[prevratpin - ratflist.begin()] = 0;
 			}
 			else{
 				cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
-				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),false);
+				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),0);
 				ratflist.insert(prevratpin+1,currframe);
 			}
 		}
 		else{
 			if (currframe==*prevratpin){
-				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin() << " to TRUE" << endl;
-				ratlist[prevratpin - ratflist.begin()] = true;
+				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin() << " to 1 (TRUE)" << endl;
+				ratlist[prevratpin - ratflist.begin()] = 1;
 			}
 			else{
 				cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
-				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),true);
+				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),1);
 				ratflist.insert(prevratpin+1,currframe);
 			}
 		}
@@ -493,10 +549,10 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 
 		std::cout << "prevratpin: " << *prevratpin << endl;
 		//std::cout << "nextratpin: " << *nextratpin << endl;
-		std::vector<bool>::iterator itb;
+		std::vector<int32_t>::iterator itrl;
 		std::cout << "ratlist contains:";
-  		for (itb=ratlist.begin(); itb<ratlist.end(); itb++)
-    		std::cout << ' ' << *itb;
+  		for (itrl=ratlist.begin(); itrl<ratlist.end(); itrl++)
+    		std::cout << ' ' << *itrl;
   		std::cout << '\n';
 
 		std::vector<int32_t>::iterator it;
@@ -851,6 +907,7 @@ SystemState initializeSystemState()
 	state.tracker_initialized = false;
 	state.tracker_init_in_progress = false;
 	state.tracker_init_started = false;
+	state.filename = "";
 	//state.ROIrect;
 	//TODO: incorporate more variables and/or objects into system state:
 	//useCamera
@@ -910,19 +967,6 @@ int main(int argc, const char** argv)
 		
 	const int newwidth = 320;
 
-	//ratflist.insert(ratflist.begin(),2);
-	//ratflist.insert(ratflist.begin(),1);
-	ratflist.insert(ratflist.begin(),0);
-	//ratflist.insert(ratflist.begin(),5);
-	std::cout << "main::ratflist.begin(): " << *ratflist.begin() << endl;
-	std::cout << "main::ratflist.end()-1: " << *(ratflist.end()-1) << endl;
-
-	ratlist.insert(ratlist.begin(),false);
-	//ratlist.insert(ratlist.begin(),false);
-	//ratlist.insert(ratlist.begin(),false);
-	prevratpin = ratflist.begin();
-	//nextratpin = ratflist.end();
-
 	SystemState state = initializeSystemState();	// initialize system state (paused, compute_bg_model, etc.)
 	Windows windows = initializeWindows();			// initialize window names and positions
 	//namedWindow(windows.main, WINDOW_NORMAL|WINDOW_KEEPRATIO);
@@ -943,8 +987,8 @@ int main(int argc, const char** argv)
     
     bool useCamera = parser.has("camera");
     bool smoothMask = parser.has("smooth");
-    string file = parser.get<string>("file_name");
-    printf("file: %s\n",file.c_str());
+    state.filename = parser.get<string>("file_name");
+    printf("file: %s\n",state.filename.c_str());
     string methodBG = parser.get<string>("methodBG");
     String methodTracker = parser.get<string>("methodTracker");
 
@@ -960,8 +1004,8 @@ int main(int argc, const char** argv)
         cap.open(0);	// open default connected camera}
     else
 	{
-		cap.open(file.c_str());	// open video file
-		//cap.open(file);	// open video file
+		cap.open(state.filename.c_str());	// open video file
+		//cap.open(state.file);	// open video file
 		maxframes = cap.get(CAP_PROP_FRAME_COUNT);	// determine number of frames in video file
 		cout << "Total number of frames: " << maxframes << endl;
 	}
@@ -975,6 +1019,55 @@ int main(int argc, const char** argv)
     }
     
     Ptr<Tracker> tracker;
+
+    /* load bookmarks.yml if it exists... */
+    FileStorage fs("bookmarks.yml", FileStorage::READ);
+    FileNode myBookmarksFileNode = fs["bookmarks"];
+    FileNode myRatlistFileNode = fs["ratlist"];
+    FileNode myRatflistFileNode = fs["ratflist"];
+    read(myBookmarksFileNode, bookmarks);
+    read(myRatlistFileNode, ratlist);
+    read(myRatflistFileNode, ratflist);
+	fs.release();
+
+	maxkeyframes = bookmarks.size();
+	cout << "bookmarks.size():" << maxkeyframes << endl;
+	cout << "ratlist.size():" << ratlist.size() << endl;
+
+	if (ratlist.size()==0){
+		cout << "empty ratlist; assuming defaults..." << endl;
+		//ratflist.insert(ratflist.begin(),2);
+		//ratflist.insert(ratflist.begin(),1);
+		ratflist.insert(ratflist.begin(),0);
+		//ratflist.insert(ratflist.begin(),5);
+		std::cout << "main::ratflist.begin(): " << *ratflist.begin() << endl;
+		std::cout << "main::ratflist.end()-1: " << *(ratflist.end()-1) << endl;
+
+		ratlist.insert(ratlist.begin(),0);
+		//ratlist.insert(ratlist.begin(),false);
+		//ratlist.insert(ratlist.begin(),false);
+		prevratpin = ratflist.begin();
+		//nextratpin = ratflist.end();
+	}
+	else
+	{
+		prevratpin = ratflist.begin();
+		std::cout << "prevratpin: " << *prevratpin << endl;
+		//std::cout << "nextratpin: " << *nextratpin << endl;
+		std::vector<int32_t>::iterator itrl;
+		std::cout << "ratlist contains:";
+  		for (itrl=ratlist.begin(); itrl<ratlist.end(); itrl++)
+    		std::cout << ' ' << *itrl;
+  		std::cout << '\n';
+
+		std::vector<int32_t>::iterator it;
+  		std::cout << "ratflist contains:";
+  		for (it=ratflist.begin(); it<ratflist.end(); it++)
+    		std::cout << ' ' << *it;
+  		std::cout << '\n';
+
+	}
+	cout << "Here?" << endl;
 
 	/*
 	double fps = cap.get(5); //get the frames per seconds of the video
