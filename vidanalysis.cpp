@@ -459,11 +459,38 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 
 		/* WRITE OUT ACTUAL TRAJECTORY INFORMATION */
 
-		for (int ff=1;ff<maxframes;++ff){
-
-
+		if (maxframes>0){
+			int res;
+			cout << "writing out stored trajectory..." << endl;
+			for (int32_t ff=1;ff<maxframes;++ff){
+				if (res = fwrite(&ff, sizeof(int32_t), 1, output_fp) != 1) {
+      				fprintf(stderr, "Error in writing currframe to file.\n");
+      				return -2;
+    			}
+				if (res = fwrite(&trajArray[ff].x, sizeof(double), 1, output_fp) != 1) {
+      				fprintf(stderr, "Error in writing trajArray.x to file.\n");
+      				return -2;
+    			}
+    			if (res = fwrite(&trajArray[ff].y, sizeof(double), 1, output_fp) != 1) {
+      				fprintf(stderr, "Error in writing trajArray.y to file.\n");
+      				return -2;
+    			}
+    			if ((trajType[ff]=='a')||(trajType[ff]=='n')||(trajType[ff]=='m')){
+					if (res = fwrite(trajType+ff, sizeof(char), 1, output_fp) != 1) {
+	      				fprintf(stderr, "Error in writing trajType to file.\n");
+	      				return -2;
+	    			}
+    			}
+    			else // untracked 
+    				if (res = fwrite("u", sizeof(char), 1, output_fp) != 1) {
+	      				fprintf(stderr, "Error in writing trajType to file.\n");
+	      				return -2;
+	    			}	
+			}
+	
 		}
 
+		
 		fclose(output_fp);
 
 
@@ -1212,7 +1239,7 @@ int main(int argc, const char** argv)
 			}
 			else if (state.tracker_initialized && state.tracking)
 			{
-				currframe = cap.get(CAP_PROP_POS_FRAMES);
+				currframe = cap.get(CAP_PROP_POS_FRAMES);	// TODO: this only works for video files, not live feeds...
 				// check if rat is expected in frame:
 				if (ratInFrame(currframe)){
 					// check if current frame has been manually set or not
