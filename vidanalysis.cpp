@@ -98,6 +98,8 @@ static vector<int32_t> ratflist;	// list of frame number where rat/no_rat signal
 static vector<int32_t> ratlist;	// list of rat/no_rat pins 	// TODO: only need bool, but bool is not supported by YAML writer...
 static std::vector<int32_t>::iterator prevratpin,nextratpin;
 static vector<Point> traj;
+static Point* trajArray;
+static char* trajType;
 
 static VideoCapture cap;
 static Mat ROImask;			// TODO: move this into SystemState or elsewhere local in the main program
@@ -455,6 +457,12 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 		      fprintf(output_fp, " ");
 		fprintf(output_fp, "\n");
 
+		/* WRITE OUT ACTUAL TRAJECTORY INFORMATION */
+
+		for (int ff=1;ff<maxframes;++ff){
+
+
+		}
 
 		fclose(output_fp);
 
@@ -1000,14 +1008,18 @@ int main(int argc, const char** argv)
 		methodTracker = "BOOSTING";
 	}
 	
-    if (useCamera)
+    if (useCamera){
         cap.open(0);	// open default connected camera}
+    	maxframes = -1;
+    }
     else
 	{
 		cap.open(state.filename.c_str());	// open video file
 		//cap.open(state.file);	// open video file
 		maxframes = cap.get(CAP_PROP_FRAME_COUNT);	// determine number of frames in video file
 		cout << "Total number of frames: " << maxframes << endl;
+		trajArray = new Point[maxframes];
+		trajType = new char[maxframes];
 	}
 	
 	parser.printMessage();
@@ -1065,9 +1077,9 @@ int main(int argc, const char** argv)
   		for (it=ratflist.begin(); it<ratflist.end(); it++)
     		std::cout << ' ' << *it;
   		std::cout << '\n';
-
 	}
-	cout << "Here?" << endl;
+
+
 
 	/*
 	double fps = cap.get(5); //get the frames per seconds of the video
@@ -1190,25 +1202,59 @@ int main(int argc, const char** argv)
 					cout << "***Could not initialize tracker...***\n";
 					return -1;
 				}
+				currframe = cap.get(CAP_PROP_POS_FRAMES);
 				state.tracker_initialized = true;
 				mp.tracker_region_ready = false;
 				cout << "***Tracker initialized successfully...***\n";
-
+				trajArray[currframe].x = trk_boundingBox.x + (float)trk_boundingBox.width/2;
+				trajArray[currframe].y = trk_boundingBox.y + (float)trk_boundingBox.height/2;
+				trajType[currframe]='m';
 			}
 			else if (state.tracker_initialized && state.tracking)
 			{
+				currframe = cap.get(CAP_PROP_POS_FRAMES);
 				// check if rat is expected in frame:
-				//if 
-				//updates the tracker
-				if( tracker->update(img, trk_boundingBox ) )
-				{
-					rectangle(img, trk_boundingBox, Scalar( 0, 170, 255 ), 2, 1 ); // orange for auto
-					rectangle(img, trk_boundingBox, Scalar( 170, 255, 0 ), 2, 1 ); // green for manual
-					rectangle(img, trk_boundingBox, Scalar( 170, 0, 255 ), 2, 1 ); // magenta for no_rat
-					//cout << "trk_boundingBox: " << trk_boundingBox << endl;
-					//currframe = cap.get(CAP_PROP_POS_FRAMES);
-					cout << "(x,y) = (" << trk_boundingBox.x + (float)trk_boundingBox.width/2 << "," <<  trk_boundingBox.y + (float)trk_boundingBox.height/2 << ")" << endl;
+				if (ratInFrame(currframe)){
+					// check if current frame has been manually set or not
+					if (trajType[currframe]=='m'){
+						// re-initializes the tracker with manual coords:
+						trk_boundingBox.x = trajArray[currframe].x - (float)trk_boundingBox.width/2;
+						trk_boundingBox.y = trajArray[currframe].y - (float)trk_boundingBox.height/2;
+						// instantiates the specific Tracker
+						tracker = Tracker::create(methodTracker);
+						if (tracker==NULL)
+						{
+							cout << "***Error in the instantiation of the tracker...***\n";
+							return -1;
+						}
+						
+						//initializes the tracker TODO: trk_boundingBox should be shifted relative to frame
+						if( !tracker->init(img, trk_boundingBox ) ) // DOES NOT WORK ON GRAYSCALE!!! TODO: investigate
+						{
+							cout << "***Could not initialize tracker...***\n";
+							return -1;
+						}
+						rectangle(img, trk_boundingBox, Scalar( 170, 255, 0 ), 2, 1 ); // green for manual				
+					}
+					else
+					//updates the tracker
+					if( tracker->update(img, trk_boundingBox ) )
+					{
+						double x,y;
+						x = trk_boundingBox.x + (float)trk_boundingBox.width/2;
+						y = trk_boundingBox.y + (float)trk_boundingBox.height/2;
+						cout << "(x,y) = (" << x << "," <<  y << ")" << endl;
+						trajArray[currframe].x = x;
+						trajArray[currframe].y = y;
+						trajType[currframe] = 'a';	// automatically tracked
+						rectangle(img, trk_boundingBox, Scalar( 0, 170, 255 ), 2, 1 ); // orange for auto
+					}
 				}
+				else{
+					trajType[currframe] = 'n';	// no rat in frame
+					//rectangle(img, trk_boundingBox, Scalar( 170, 0, 255 ), 2, 1 ); // magenta for no_rat
+				}
+
 			}			
 			// #####################################################
         }
@@ -1281,6 +1327,9 @@ int main(int argc, const char** argv)
 				updateDisplay(windows.bgmodel, bgimg, ROIrect, img.size());
 		}
 		}
+	cout << "releasing memory for trajArray and trajType..." << endl;
+	delete [] trajArray;
+	delete [] trajType;
     return 0;
 }
 
