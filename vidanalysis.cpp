@@ -461,17 +461,22 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 
 		if (maxframes>0){
 			int res;
+			double x,y;
 			cout << "writing out stored trajectory..." << endl;
 			for (int32_t ff=1;ff<maxframes;++ff){
+				x = trajArray[ff].x;
+				y = trajArray[ff].y;
+				//cout << "trajArray[" << ff << "].x = " << x << endl;
+				//cout << "trajArray[" << ff << "].y = " << y << endl;
 				if (res = fwrite(&ff, sizeof(int32_t), 1, output_fp) != 1) {
       				fprintf(stderr, "Error in writing currframe to file.\n");
       				return -2;
     			}
-				if (res = fwrite(&trajArray[ff].x, sizeof(double), 1, output_fp) != 1) {
+				if (res = fwrite(&x, sizeof(double), 1, output_fp) != 1) {
       				fprintf(stderr, "Error in writing trajArray.x to file.\n");
       				return -2;
     			}
-    			if (res = fwrite(&trajArray[ff].y, sizeof(double), 1, output_fp) != 1) {
+    			if (res = fwrite(&y, sizeof(double), 1, output_fp) != 1) {
       				fprintf(stderr, "Error in writing trajArray.y to file.\n");
       				return -2;
     			}
@@ -1270,7 +1275,7 @@ int main(int argc, const char** argv)
 						double x,y;
 						x = trk_boundingBox.x + (float)trk_boundingBox.width/2;
 						y = trk_boundingBox.y + (float)trk_boundingBox.height/2;
-						cout << "(x,y) = (" << x << "," <<  y << ")" << endl;
+						//cout << "(x,y) = (" << x << "," <<  y << ")" << endl;
 						trajArray[currframe].x = x;
 						trajArray[currframe].y = y;
 						trajType[currframe] = 'a';	// automatically tracked
