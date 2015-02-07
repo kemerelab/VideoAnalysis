@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <stdlib.h>     /* div, div_t */
 #include <string>
+#include <exception>
 
 //#include <fcntl.h>   // F_OK
 //#include <linux/fs.h> // file ACCESS
@@ -552,43 +553,63 @@ int handleKeys(string window_title, SystemState& state, int timeout)
 	}
 	if (k=='r') // toggle rat in frame
 	{
-		currframe = cap.get(CAP_PROP_POS_FRAMES);
-
-		cout << "rat toggled" << endl;
-		std::cout << "prevratpin: " << *prevratpin << endl;
-		//std::cout << "nextratpin: " << *nextratpin << endl;
-		std::cout << "current frame: " << currframe << endl;
+		try{
+			currframe = cap.get(CAP_PROP_POS_FRAMES);
+		//	cout << "rat toggled" << endl;
+		//	std::cout << "prevratpin: " << *prevratpin << endl;
+			if (*prevratpin < 0){
+				cout << "invalid prevratpin detected!" << endl;
+				throw 1;
+			}
+			//std::cout << "current frame: " << currframe << endl;
 		
-		if (ratInFrame(currframe)==true){
-			if (currframe==*prevratpin){
-				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin()  << " to 0 (FALSE)" << endl;
-				ratlist[prevratpin - ratflist.begin()] = 0;
+			if (ratInFrame(currframe)==true){
+				int32_t offset = prevratpin - ratflist.begin();
+				if (offset < 0){
+					cout << "invalid offset detected!" << endl;
+					throw 2;
+				}
+				if (currframe==*prevratpin){
+		//			cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin()  << " to 0 (FALSE)" << endl;
+					ratlist[offset] = 0;
+				}
+				else{
+		//			cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
+					ratlist.insert(ratlist.begin()+ (offset + 1),0);
+					ratflist.insert(prevratpin+1,currframe);
+				}
 			}
 			else{
-				cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
-				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),0);
-				ratflist.insert(prevratpin+1,currframe);
+				int32_t offset = prevratpin - ratflist.begin();
+				if (offset < 0){
+				//	cout << "invalid offset detected!" << endl;
+					throw 2;
+				}
+				if (currframe==*prevratpin){
+				//	cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin() << " to 1 (TRUE)" << endl;
+					ratlist[offset] = 1;
+				}
+				else{
+				//	cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
+					ratlist.insert(ratlist.begin()+ (offset + 1),1);
+					ratflist.insert(prevratpin+1,currframe);
+				}
 			}
+			
+			sprintf(overlaytext, "rat toggle");
+			displayOverlay(window_title,overlaytext, msgtimeout);
 		}
-		else{
-			if (currframe==*prevratpin){
-				cout << "modifying rat boolean in position begin() + " << prevratpin - ratflist.begin() << " to 1 (TRUE)" << endl;
-				ratlist[prevratpin - ratflist.begin()] = 1;
-			}
-			else{
-				cout << "adding new rat boolean in position begin() + " << prevratpin - ratflist.begin() + 1 << endl;
-				ratlist.insert(ratlist.begin()+ (prevratpin - ratflist.begin() + 1),1);
-				ratflist.insert(prevratpin+1,currframe);
-			}
+		catch(exception& e){
+			cout << "unexpected error occured when toggling rat presence..." << e.what() << endl;
 		}
+		catch(...){
+			cout << "unexpected error occured when toggling rat presence..." << endl;
+		}
+	
+		 		
+		//std::cout << "prevratpin: " << *prevratpin << endl;
 		
-		
-		
-		sprintf(overlaytext, "rat toggle");
-		displayOverlay(window_title,overlaytext, msgtimeout);
-
-		std::cout << "prevratpin: " << *prevratpin << endl;
-		//std::cout << "nextratpin: " << *nextratpin << endl;
+		/*
 		std::vector<int32_t>::iterator itrl;
 		std::cout << "ratlist contains:";
   		for (itrl=ratlist.begin(); itrl<ratlist.end(); itrl++)
@@ -600,6 +621,7 @@ int handleKeys(string window_title, SystemState& state, int timeout)
   		for (it=ratflist.begin(); it<ratflist.end(); it++)
     		std::cout << ' ' << *it;
   		std::cout << '\n';
+		*/
 
 		if (!state.paused)
 			return 1;
@@ -1050,8 +1072,13 @@ int main(int argc, const char** argv)
 		//cap.open(state.file);	// open video file
 		maxframes = cap.get(CAP_PROP_FRAME_COUNT);	// determine number of frames in video file
 		cout << "Total number of frames: " << maxframes << endl;
-		trajArray = new Point[maxframes];
-		trajType = new char[maxframes];
+		try{
+			trajArray = new Point[maxframes];
+			trajType = new char[maxframes];
+		}
+  		catch (exception& e){
+  			cout << "Standard exception when allocating memory for trajArray and trajType: " << e.what() << endl;
+  		}	
 	}
 	
 	parser.printMessage();
