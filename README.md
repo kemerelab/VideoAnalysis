@@ -44,7 +44,7 @@ sudo make install</pre></li>
 	<li>get the latest version of VideoAnalysis by typing the following in your terminal:
 	<pre>git clone https://github.com/kemerelab/VideoAnalysis</pre>
 </li>
-	<li>make a build directory, and compile the software:
+	<li>from within the VideoAnalysis directory (`cd VideoAnalysis`), make a build directory, and compile the software:
 	<pre>
 mkdir build
 cd build
